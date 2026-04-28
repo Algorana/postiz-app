@@ -39,6 +39,15 @@ export class InstagramStandaloneProvider
     return 2200;
   }
 
+  private redirectUri() {
+    const frontendUrl = process.env.FRONTEND_URL || '';
+    const baseUrl = frontendUrl.indexOf('https') == -1
+      ? `https://redirectmeto.com/${frontendUrl}`
+      : frontendUrl;
+
+    return `${baseUrl.replace(/\/$/, '')}/integrations/social/instagram-standalone`;
+  }
+
   public override handleErrors(
     body: string,
     status: number
@@ -84,11 +93,7 @@ export class InstagramStandaloneProvider
         `https://www.instagram.com/oauth/authorize?enable_fb_login=0&client_id=${
           process.env.INSTAGRAM_APP_ID
         }&redirect_uri=${encodeURIComponent(
-          `${
-            process?.env.FRONTEND_URL?.indexOf('https') == -1
-              ? `https://redirectmeto.com/${process?.env.FRONTEND_URL}`
-              : `${process?.env.FRONTEND_URL}`
-          }/integrations/social/instagram-standalone`
+          this.redirectUri()
         )}&response_type=code&scope=${encodeURIComponent(
           this.scopes.join(',')
         )}` + `&state=${state}`,
@@ -106,15 +111,13 @@ export class InstagramStandaloneProvider
     formData.append('client_id', process.env.INSTAGRAM_APP_ID!);
     formData.append('client_secret', process.env.INSTAGRAM_APP_SECRET!);
     formData.append('grant_type', 'authorization_code');
-    formData.append(
-      'redirect_uri',
-      `${
-        process?.env.FRONTEND_URL?.indexOf('https') == -1
-          ? `https://redirectmeto.com/${process?.env.FRONTEND_URL}`
-          : `${process?.env.FRONTEND_URL}`
-      }/integrations/social/instagram-standalone`
-    );
+    formData.append('redirect_uri', this.redirectUri());
     formData.append('code', params.code);
+
+    console.log('[Instagram Standalone] OAuth redirect_uri debug', {
+      frontendUrl: process.env.FRONTEND_URL,
+      redirectUri: this.redirectUri(),
+    });
 
     const accessTokenResponse = await fetch(
       'https://api.instagram.com/oauth/access_token',
