@@ -18,6 +18,7 @@ import { timer } from '@gitroom/helpers/utils/timer';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { WebhooksService } from '@gitroom/nestjs-libraries/database/prisma/webhooks/webhooks.service';
 import { TypedSearchAttributes } from '@temporalio/common';
+import { ApplicationFailure } from '@temporalio/activity';
 import {
   organizationId,
   postId as postIdSearchParam,
@@ -168,30 +169,51 @@ export class PostActivity {
       posts
     );
 
-    const postNow = await getIntegration.post(
-      integration.internalId,
-      integration.token,
-      await Promise.all(
-        (newPosts || []).map(async (p) => ({
-          id: p.id,
-          message: stripHtmlValidation(
-            getIntegration.editor,
-            p.content,
-            true,
-            false,
-            !/<\/?[a-z][\s\S]*>/i.test(p.content),
-            getIntegration.mentionFormat
-          ),
-          settings: JSON.parse(p.settings || '{}'),
-          media: await this._postService.updateMedia(
-            p.id,
-            JSON.parse(p.image || '[]'),
-            getIntegration?.convertToJPEG || false
-          ),
-        }))
-      ),
-      integration
-    );
+    let postNow;
+    try {
+      postNow = await getIntegration.post(
+        integration.internalId,
+        integration.token,
+        await Promise.all(
+          (newPosts || []).map(async (p) => ({
+            id: p.id,
+            message: stripHtmlValidation(
+              getIntegration.editor,
+              p.content,
+              true,
+              false,
+              !/<\/?[a-z][\s\S]*>/i.test(p.content),
+              getIntegration.mentionFormat
+            ),
+            settings: JSON.parse(p.settings || '{}'),
+            media: await this._postService.updateMedia(
+              p.id,
+              JSON.parse(p.image || '[]'),
+              getIntegration?.convertToJPEG || false
+            ),
+          }))
+        ),
+        integration
+      );
+    } catch (err) {
+      if (err instanceof ApplicationFailure) {
+        console.log(
+          'postSocial ApplicationFailure details:',
+          JSON.stringify(
+            {
+              provider: integration.providerIdentifier,
+              type: err.type,
+              message: err.message,
+              details: err.details,
+            },
+            null,
+            2
+          )
+        );
+      }
+
+      throw err;
+    }
 
     await this._temporalService.client
       .getRawClient()
