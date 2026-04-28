@@ -116,12 +116,25 @@ export class InstagramStandaloneProvider
     );
     formData.append('code', params.code);
 
-    const getAccessToken = await (
-      await fetch('https://api.instagram.com/oauth/access_token', {
+    const accessTokenResponse = await fetch(
+      'https://api.instagram.com/oauth/access_token',
+      {
         method: 'POST',
         body: formData,
-      })
-    ).json();
+      }
+    );
+    const getAccessToken = await accessTokenResponse.json();
+
+    console.log('[Instagram Standalone] OAuth token response debug', {
+      ok: accessTokenResponse.ok,
+      status: accessTokenResponse.status,
+      keys: Object.keys(getAccessToken || {}),
+      error_type: getAccessToken?.error_type,
+      error_message: getAccessToken?.error_message,
+      error: getAccessToken?.error,
+      has_access_token: !!getAccessToken?.access_token,
+      permissions: getAccessToken?.permissions,
+    });
 
     const { access_token, expires_in, ...all } = await (
       await fetch(
