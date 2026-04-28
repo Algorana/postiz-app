@@ -88,15 +88,25 @@ export class InstagramStandaloneProvider
 
   async generateAuthUrl() {
     const state = makeId(6);
+    const redirectUri = this.redirectUri();
+    const url =
+      `https://www.instagram.com/oauth/authorize?enable_fb_login=0&client_id=${
+        process.env.INSTAGRAM_APP_ID
+      }&redirect_uri=${encodeURIComponent(
+        redirectUri
+      )}&response_type=code&scope=${encodeURIComponent(
+        this.scopes.join(',')
+      )}` + `&state=${state}`;
+
+    console.log('[Instagram Standalone] OAuth authorize URL debug', {
+      state,
+      redirectUri,
+      scope: this.scopes.join(','),
+      url,
+    });
+
     return {
-      url:
-        `https://www.instagram.com/oauth/authorize?enable_fb_login=0&client_id=${
-          process.env.INSTAGRAM_APP_ID
-        }&redirect_uri=${encodeURIComponent(
-          this.redirectUri()
-        )}&response_type=code&scope=${encodeURIComponent(
-          this.scopes.join(',')
-        )}` + `&state=${state}`,
+      url,
       codeVerifier: makeId(10),
       state,
     };
@@ -117,6 +127,7 @@ export class InstagramStandaloneProvider
     console.log('[Instagram Standalone] OAuth redirect_uri debug', {
       frontendUrl: process.env.FRONTEND_URL,
       redirectUri: this.redirectUri(),
+      codePrefix: params.code?.slice(0, 12),
     });
 
     const accessTokenResponse = await fetch(
