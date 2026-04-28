@@ -17,11 +17,11 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.services.postiz.loadbalancer.server.port=5000
-      - traefik.http.routers.postiz-frontend.rule=Host(`${POSTIZ_HOST:-postiz.stage.algorana.dev}`)
+      - traefik.http.routers.postiz-frontend.rule=Host(`postiz.algorana.dev`)
       - traefik.http.routers.postiz-frontend.entrypoints=https
       - traefik.http.routers.postiz-frontend.tls=true
       - traefik.http.routers.postiz-frontend.tls.certresolver=myresolver
-      - traefik.http.routers.postiz-api.rule=Host(`${POSTIZ_HOST:-postiz.stage.algorana.dev}`) && PathPrefix(`/api`)
+      - traefik.http.routers.postiz-api.rule=Host(`postiz.algorana.dev`) && PathPrefix(`/api`)
       - traefik.http.routers.postiz-api.entrypoints=https
       - traefik.http.routers.postiz-api.tls=true
       - traefik.http.routers.postiz-api.tls.certresolver=myresolver
@@ -35,6 +35,8 @@ services:
         condition: service_healthy
       postiz-redis:
         condition: service_healthy
+      temporal:
+        condition: service_started
 
   postiz-postgres:
     image: postgres:17-alpine

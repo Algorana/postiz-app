@@ -133,6 +133,20 @@ export class InstagramStandaloneProvider
       )
     ).json();
 
+    const permissions = getAccessToken.permissions;
+    const permissionsList = Array.isArray(permissions)
+      ? permissions
+      : decodeURIComponent(permissions || '').split(
+          permissions?.includes(',') ? ',' : permissions?.includes(' ') ? ' ' : '-'
+        );
+
+    console.log('[Instagram Standalone] OAuth permissions debug', {
+      required: this.scopes,
+      received: permissions,
+      parsed: permissionsList,
+      missing: this.scopes.filter((scope) => !permissionsList.includes(scope)),
+    });
+
     this.checkScopes(this.scopes, getAccessToken.permissions);
 
     const { user_id, name, username, profile_picture_url } = await (
