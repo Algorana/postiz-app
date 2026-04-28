@@ -107,12 +107,12 @@ export class InstagramStandaloneProvider
     codeVerifier: string;
     refresh: string;
   }) {
-    const formData = new FormData();
-    formData.append('client_id', process.env.INSTAGRAM_APP_ID!);
-    formData.append('client_secret', process.env.INSTAGRAM_APP_SECRET!);
-    formData.append('grant_type', 'authorization_code');
-    formData.append('redirect_uri', this.redirectUri());
-    formData.append('code', params.code);
+    const formData = new URLSearchParams();
+    formData.set('client_id', process.env.INSTAGRAM_APP_ID!);
+    formData.set('client_secret', process.env.INSTAGRAM_APP_SECRET!);
+    formData.set('grant_type', 'authorization_code');
+    formData.set('redirect_uri', this.redirectUri());
+    formData.set('code', params.code);
 
     console.log('[Instagram Standalone] OAuth redirect_uri debug', {
       frontendUrl: process.env.FRONTEND_URL,
@@ -123,6 +123,9 @@ export class InstagramStandaloneProvider
       'https://api.instagram.com/oauth/access_token',
       {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
         body: formData,
       }
     );
