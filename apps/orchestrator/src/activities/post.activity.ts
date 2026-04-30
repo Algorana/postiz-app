@@ -87,7 +87,9 @@ export class PostActivity {
   @ActivityMethod()
   async getPostsList(orgId: string, postId: string) {
     if (process.env.STRIPE_SECRET_KEY) {
-      const subscription = await this._subscriptionService.getSubscription(orgId);
+      const subscription = await this._subscriptionService.getSubscription(
+        orgId
+      );
       if (!subscription) {
         return [];
       }
@@ -379,10 +381,7 @@ export class PostActivity {
 
       return refresh;
     } catch (err) {
-      await this._refreshIntegrationService.setBetweenSteps(
-        integration,
-        cause
-      );
+      await this._refreshIntegrationService.setBetweenSteps(integration, cause);
       return false;
     }
   }

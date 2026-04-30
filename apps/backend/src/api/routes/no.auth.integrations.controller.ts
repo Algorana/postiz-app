@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { ConnectIntegrationDto } from '@gitroom/nestjs-libraries/dtos/integrations/connect.integration.dto';
+import type { IntegrationProxyDto } from '@gitroom/nestjs-libraries/dtos/integrations/integration.proxy.dto';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { CheckPolicies } from '@gitroom/backend/services/auth/permissions/permissions.ability';
@@ -37,6 +38,11 @@ export class NoAuthIntegrationsController {
   @Get('/')
   getIntegrations() {
     return this._integrationManager.getAllIntegrations();
+  }
+
+  @Get('/proxies')
+  getIntegrationProxies(): IntegrationProxyDto[] {
+    return [];
   }
 
   @Post('/social-connect/:integration')
@@ -87,6 +93,8 @@ export class NoAuthIntegrationsController {
     if (refresh) {
       await ioRedis.del(`refresh:${body.state}`);
     }
+
+    const selectedProxy = (await ioRedis.get(`proxy:${body.state}`)) ?? null;
 
     const onboarding = await ioRedis.get(`onboarding:${body.state}`);
     if (onboarding) {
@@ -236,8 +244,11 @@ export class NoAuthIntegrationsController {
           ? AuthService.signJWT(
               JSON.parse(Buffer.from(body.code, 'base64').toString())
             )
-          : undefined
+          : undefined,
+        selectedProxy
       );
+
+    await ioRedis.del(`proxy:${body.state}`);
 
     this._refreshIntegrationService
       .startRefreshWorkflow(org.id, createUpdate.id, integrationProvider)

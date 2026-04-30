@@ -115,6 +115,7 @@ export class IntegrationsController {
             changeProfilePicture: !!findIntegration?.changeProfilePicture,
             changeNickName: !!findIntegration?.changeNickname,
             customer: p.customer,
+            proxy: (p as { proxy?: string | null }).proxy ?? null,
             additionalSettings: p.additionalSettings || '[]',
           };
         })
@@ -197,6 +198,7 @@ export class IntegrationsController {
     @Query('externalUrl') externalUrl: string,
     @Query('redirectUrl') redirectUrl: string,
     @Query('onboarding') onboarding: string,
+    @Query('proxy') proxy: unknown,
     @GetOrgFromRequest() org: Organization
   ) {
     if (
@@ -225,8 +227,15 @@ export class IntegrationsController {
       const { codeVerifier, state, url } =
         await integrationProvider.generateAuthUrl(getExternalUrl);
 
+      const selectedProxy =
+        typeof proxy === 'string' && proxy.trim() ? proxy.trim() : undefined;
+
       if (refresh) {
         await ioRedis.set(`refresh:${state}`, refresh, 'EX', 3600);
+      }
+
+      if (selectedProxy) {
+        await ioRedis.set(`proxy:${state}`, selectedProxy, 'EX', 3600);
       }
 
       if (onboarding === 'true') {

@@ -31,7 +31,7 @@ export class InstagramStandaloneProvider
     'instagram_business_manage_comments',
     'instagram_business_manage_insights',
   ];
-    override maxConcurrentJob = 200; // Instagram standalone has stricter limits
+  override maxConcurrentJob = 200; // Instagram standalone has stricter limits
   dto = InstagramDto;
 
   editor = 'normal' as const;
@@ -41,11 +41,15 @@ export class InstagramStandaloneProvider
 
   private redirectUri() {
     const frontendUrl = process.env.FRONTEND_URL || '';
-    const baseUrl = frontendUrl.indexOf('https') == -1
-      ? `https://redirectmeto.com/${frontendUrl}`
-      : frontendUrl;
+    const baseUrl =
+      frontendUrl.indexOf('https') == -1
+        ? `https://redirectmeto.com/${frontendUrl}`
+        : frontendUrl;
 
-    return `${baseUrl.replace(/\/$/, '')}/integrations/social/instagram-standalone`;
+    return `${baseUrl.replace(
+      /\/$/,
+      ''
+    )}/integrations/social/instagram-standalone`;
   }
 
   public override handleErrors(
@@ -167,7 +171,11 @@ export class InstagramStandaloneProvider
     const permissionsList = Array.isArray(permissions)
       ? permissions
       : decodeURIComponent(permissions || '').split(
-          permissions?.includes(',') ? ',' : permissions?.includes(' ') ? ' ' : '-'
+          permissions?.includes(',')
+            ? ','
+            : permissions?.includes(' ')
+            ? ' '
+            : '-'
         );
 
     console.log('[Instagram Standalone] OAuth permissions debug', {

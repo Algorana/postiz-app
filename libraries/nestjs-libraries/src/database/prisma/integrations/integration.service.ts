@@ -108,7 +108,8 @@ export class IntegrationService {
     isBetweenSteps = false,
     refresh?: string,
     timezone?: number,
-    customInstanceDetails?: string
+    customInstanceDetails?: string,
+    proxy?: string | null
   ) {
     const uploadedPicture = picture
       ? picture?.indexOf('imagedelivery.net') > -1
@@ -132,7 +133,8 @@ export class IntegrationService {
       isBetweenSteps,
       refresh,
       timezone,
-      customInstanceDetails
+      customInstanceDetails,
+      proxy
     );
   }
 
@@ -321,7 +323,8 @@ export class IntegrationService {
       inBetweenSteps: false,
       token: getIntegrationInformation.access_token,
       profile: getIntegrationInformation.username,
-    });
+      proxy: (getIntegration as { proxy?: string | null }).proxy,
+    } as Partial<Integration> & { proxy?: string | null });
 
     return { success: true };
   }

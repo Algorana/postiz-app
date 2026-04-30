@@ -26,6 +26,11 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
 import useCookie from 'react-use-cookie';
 import { Onboarding } from '@gitroom/frontend/components/onboarding/onboarding';
+import { useModals } from '@gitroom/frontend/components/layout/new-modal';
+import {
+  buildIntegrationSocialUrl,
+  IntegrationProxySelector,
+} from '@gitroom/frontend/components/launches/helpers/use.integration.proxies';
 
 export const SVGLine = () => {
   return (
@@ -356,6 +361,7 @@ export const LaunchesComponent = () => {
   const router = useRouter();
   const search = useSearchParams();
   const toast = useToaster();
+  const modal = useModals();
   const fireEvents = useFireEvents();
   const t = useT();
   const [reload, setReload] = useState(false);
@@ -444,15 +450,38 @@ export const LaunchesComponent = () => {
         }
       ) =>
       async () => {
-        const { url } = await (
-          await fetch(
-            `/integrations/social/${integration.identifier}?refresh=${integration.internalId}`,
-            {
-              method: 'GET',
-            }
-          )
-        ).json();
-        window.location.href = url;
+        modal.openModal({
+          title: t('select_proxy', 'Select proxy'),
+          withCloseButton: true,
+          children: (
+            <IntegrationProxySelector
+              onContinue={async (selectedProxy) => {
+                const { url, err } = await (
+                  await fetch(
+                    buildIntegrationSocialUrl(integration.identifier, {
+                      refresh: integration.internalId,
+                      proxy: selectedProxy ?? undefined,
+                    }),
+                    {
+                      method: 'GET',
+                    }
+                  )
+                ).json();
+
+                if (err || !url) {
+                  throw new Error(
+                    t(
+                      'could_not_connect_to_platform',
+                      'Could not connect to the platform'
+                    )
+                  );
+                }
+
+                window.location.href = url;
+              }}
+            />
+          ),
+        });
       },
     []
   );
