@@ -1,5 +1,7 @@
 import {
+  AuthProxyContext,
   AuthTokenDetails,
+  ClientInformation,
   PostDetails,
   PostResponse,
   SocialProvider,
@@ -11,6 +13,7 @@ import { InstagramDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-set
 import { InstagramProvider } from '@gitroom/nestjs-libraries/integrations/social/instagram.provider';
 import { Integration } from '@prisma/client';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
+import { ProxyUnavailableError } from '@gitroom/nestjs-libraries/http/proxy.errors';
 
 const instagramProvider = new InstagramProvider();
 
@@ -39,6 +42,19 @@ export class InstagramStandaloneProvider
     return 2200;
   }
 
+  private getAuthProxyContext(
+    authProxyContext?: AuthProxyContext
+  ): AuthProxyContext {
+    if (
+      !authProxyContext?.proxyHttpService ||
+      authProxyContext.proxyId === undefined
+    ) {
+      throw new ProxyUnavailableError();
+    }
+
+    return authProxyContext;
+  }
+
   private redirectUri() {
     const frontendUrl = process.env.FRONTEND_URL || '';
     const baseUrl =
@@ -61,12 +77,31 @@ export class InstagramStandaloneProvider
     return instagramProvider.handleErrors(body, status);
   }
 
-  async refreshToken(refresh_token: string): Promise<AuthTokenDetails> {
+  async refreshToken(
+    refresh_token: string,
+    authProxyContext?: AuthProxyContext
+  ): Promise<AuthTokenDetails> {
+    const proxyContext = this.getAuthProxyContext(authProxyContext);
+    const refreshTokenUrl = new URL(
+      'https://graph.instagram.com/refresh_access_token'
+    );
+    refreshTokenUrl.searchParams.set('grant_type', 'ig_refresh_token');
+    refreshTokenUrl.searchParams.set('access_token', refresh_token);
+
     const { access_token } = await (
-      await fetch(
-        `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${refresh_token}`
+      await proxyContext.proxyHttpService.fetch(
+        refreshTokenUrl.toString(),
+        { method: 'GET' },
+        proxyContext.proxyId
       )
     ).json();
+
+    const profileUrl = new URL('https://graph.instagram.com/v21.0/me');
+    profileUrl.searchParams.set(
+      'fields',
+      'user_id,username,name,profile_picture_url'
+    );
+    profileUrl.searchParams.set('access_token', access_token);
 
     const {
       user_id,
@@ -74,8 +109,10 @@ export class InstagramStandaloneProvider
       username,
       profile_picture_url = '',
     } = await (
-      await fetch(
-        `https://graph.instagram.com/v21.0/me?fields=user_id,username,name,profile_picture_url&access_token=${access_token}`
+      await proxyContext.proxyHttpService.fetch(
+        profileUrl.toString(),
+        { method: 'GET' },
+        proxyContext.proxyId
       )
     ).json();
 
@@ -106,7 +143,6 @@ export class InstagramStandaloneProvider
       state,
       redirectUri,
       scope: this.scopes.join(','),
-      url,
     });
 
     return {
@@ -116,11 +152,16 @@ export class InstagramStandaloneProvider
     };
   }
 
-  async authenticate(params: {
-    code: string;
-    codeVerifier: string;
-    refresh: string;
-  }) {
+  async authenticate(
+    params: {
+      code: string;
+      codeVerifier: string;
+      refresh?: string;
+    },
+    _clientInformation?: ClientInformation,
+    authProxyContext?: AuthProxyContext
+  ) {
+    const proxyContext = this.getAuthProxyContext(authProxyContext);
     const formData = new URLSearchParams();
     formData.set('client_id', process.env.INSTAGRAM_APP_ID!);
     formData.set('client_secret', process.env.INSTAGRAM_APP_SECRET!);
@@ -131,10 +172,9 @@ export class InstagramStandaloneProvider
     console.log('[Instagram Standalone] OAuth redirect_uri debug', {
       frontendUrl: process.env.FRONTEND_URL,
       redirectUri: this.redirectUri(),
-      codePrefix: params.code?.slice(0, 12),
     });
 
-    const accessTokenResponse = await fetch(
+    const accessTokenResponse = await proxyContext.proxyHttpService.fetch(
       'https://api.instagram.com/oauth/access_token',
       {
         method: 'POST',
@@ -142,7 +182,8 @@ export class InstagramStandaloneProvider
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: formData,
-      }
+      },
+      proxyContext.proxyId
     );
     const getAccessToken = await accessTokenResponse.json();
 
@@ -151,19 +192,34 @@ export class InstagramStandaloneProvider
       status: accessTokenResponse.status,
       keys: Object.keys(getAccessToken || {}),
       error_type: getAccessToken?.error_type,
-      error_message: getAccessToken?.error_message,
       error: getAccessToken?.error,
+      has_error_message: !!getAccessToken?.error_message,
       has_access_token: !!getAccessToken?.access_token,
       permissions: getAccessToken?.permissions,
     });
 
-    const { access_token, expires_in, ...all } = await (
-      await fetch(
-        'https://graph.instagram.com/access_token' +
-          '?grant_type=ig_exchange_token' +
-          `&client_id=${process.env.INSTAGRAM_APP_ID}` +
-          `&client_secret=${process.env.INSTAGRAM_APP_SECRET}` +
-          `&access_token=${getAccessToken.access_token}`
+    const longLivedTokenUrl = new URL(
+      'https://graph.instagram.com/access_token'
+    );
+    longLivedTokenUrl.searchParams.set('grant_type', 'ig_exchange_token');
+    longLivedTokenUrl.searchParams.set(
+      'client_id',
+      process.env.INSTAGRAM_APP_ID!
+    );
+    longLivedTokenUrl.searchParams.set(
+      'client_secret',
+      process.env.INSTAGRAM_APP_SECRET!
+    );
+    longLivedTokenUrl.searchParams.set(
+      'access_token',
+      getAccessToken.access_token
+    );
+
+    const { access_token } = await (
+      await proxyContext.proxyHttpService.fetch(
+        longLivedTokenUrl.toString(),
+        { method: 'GET' },
+        proxyContext.proxyId
       )
     ).json();
 
@@ -187,9 +243,18 @@ export class InstagramStandaloneProvider
 
     this.checkScopes(this.scopes, getAccessToken.permissions);
 
+    const profileUrl = new URL('https://graph.instagram.com/v21.0/me');
+    profileUrl.searchParams.set(
+      'fields',
+      'user_id,username,name,profile_picture_url'
+    );
+    profileUrl.searchParams.set('access_token', access_token);
+
     const { user_id, name, username, profile_picture_url } = await (
-      await fetch(
-        `https://graph.instagram.com/v21.0/me?fields=user_id,username,name,profile_picture_url&access_token=${access_token}`
+      await proxyContext.proxyHttpService.fetch(
+        profileUrl.toString(),
+        { method: 'GET' },
+        proxyContext.proxyId
       )
     ).json();
 

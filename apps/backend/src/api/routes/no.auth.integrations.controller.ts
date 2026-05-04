@@ -25,6 +25,14 @@ import {
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.service';
 import { ProxyService } from '@gitroom/nestjs-libraries/database/prisma/proxies/proxy.service';
+import { ProxyHttpService } from '@gitroom/nestjs-libraries/http/proxy.http.service';
+import { ProxyUnavailableError } from '@gitroom/nestjs-libraries/http/proxy.errors';
+import {
+  isAuthProxyProviderIdentifier,
+} from '@gitroom/nestjs-libraries/integrations/social.auth.proxy.providers';
+
+const AUTH_PROXY_UNAVAILABLE_MESSAGE =
+  'Authentication failed because the selected proxy is unavailable. Please choose another proxy or No Proxy and reconnect.';
 
 @ApiTags('Integrations')
 @Controller('/integrations')
@@ -34,7 +42,8 @@ export class NoAuthIntegrationsController {
     private _integrationService: IntegrationService,
     private _refreshIntegrationService: RefreshIntegrationService,
     private _organizationService: OrganizationService,
-    private _proxyService: ProxyService
+    private _proxyService: ProxyService,
+    private _proxyHttpService: ProxyHttpService
   ) {}
 
   @Get('/')
@@ -122,7 +131,13 @@ export class NoAuthIntegrationsController {
             codeVerifier: getCodeVerifier,
             refresh: body.refresh,
           },
-          details ? JSON.parse(details) : undefined
+          details ? JSON.parse(details) : undefined,
+          isAuthProxyProviderIdentifier(integrationProvider.identifier)
+            ? {
+                proxyId: selectedProxy,
+                proxyHttpService: this._proxyHttpService,
+              }
+            : undefined
         );
 
         if (typeof auth === 'string') {
@@ -164,6 +179,18 @@ export class NoAuthIntegrationsController {
         if (err instanceof NotEnoughScopes) {
           return res({
             error: err.message,
+            accessToken: '',
+            id: '',
+            name: '',
+            picture: '',
+            username: '',
+            additionalSettings: [],
+          });
+        }
+
+        if (err instanceof ProxyUnavailableError) {
+          return res({
+            error: AUTH_PROXY_UNAVAILABLE_MESSAGE,
             accessToken: '',
             id: '',
             name: '',

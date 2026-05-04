@@ -1,0 +1,73 @@
+# Решение: proxy для server-side OAuth/auth и refresh TikTok/Instagram Standalone
+
+Источник: [`spec/proxy-update.md`](../../spec/proxy-update.md)
+
+## Статус
+
+Принято для реализации спецификации `proxy-update`.
+
+## Контекст
+
+В предыдущем flow proxy уже выбирается в UI modal и сохраняется по OAuth `state`, см. [решение о proxy в Integration](integration-proxy-flow.md). Новая задача — начать применять выбранный proxy к server-side auth-запросам provider identifiers `tiktok` и `instagram-standalone`.
+
+## Ключевые решения
+
+- Все server-side auth-запросы providers `tiktok` и `instagram-standalone` должны выполняться через единый путь `ProxyHttpService.fetch(url, options, proxyId | null)`.
+- Через `ProxyHttpService.fetch` должны проходить:
+  - OAuth token exchange;
+  - profile/user info;
+  - `refreshToken`.
+- Browser redirect не проксируется: пользовательский переход в OAuth provider остаётся обычным browser redirect.
+- Если proxy выбран, но на callback или refresh он недоступен, не найден или невалиден, поведение должно быть fail closed:
+  - direct fallback запрещён;
+  - integration не создаётся при auth/callback failure;
+  - пользователю возвращается явная proxy-specific ошибка через существующий error flow.
+- Если proxy отсутствует (`null`), flow всё равно должен идти через `ProxyHttpService.fetch(..., null)`, но без сетевого proxy.
+- До browser redirect proxy id не валидируется. Валидация и фактическая проверка происходят на callback и refresh.
+- Refresh должен использовать сохранённое значение `Integration.proxy`.
+- После успешного refresh прежний proxy должен сохраняться в integration.
+- При proxy failure во время refresh нужно сохранить текущую жёсткую refresh failure semantics: integration отключается/disconnect происходит как при существующей ошибке refresh.
+- UI выбора proxy в рамках этой задачи не меняется.
+
+## Логирование и безопасность
+
+Разрешено логировать только:
+
+- proxy id;
+- proxy name;
+- provider;
+- operation;
+- HTTP status;
+- host/path.
+
+Запрещено логировать:
+
+- `proxyParameter`;
+- proxy credentials;
+- OAuth code;
+- access/refresh tokens;
+- client secrets и другие secrets.
+
+## Ожидаемые области изменений
+
+- `apps/backend/src/api/routes/no-auth/no.auth.integrations.controller.ts` — callback/auth error flow и передача proxy в provider auth path.
+- `libraries/nestjs-libraries/src/integrations/social.integrations.interface.ts` — контракт provider methods для передачи proxy id в auth/refresh операции.
+- `libraries/nestjs-libraries/src/integrations/social/tiktok.provider.ts` — token exchange, user info и refresh через `ProxyHttpService.fetch`.
+- `libraries/nestjs-libraries/src/integrations/social/instagram.standalone.provider.ts` — token exchange, user info и refresh через `ProxyHttpService.fetch`.
+- `libraries/nestjs-libraries/src/integrations/integration.service.ts` — создание/обновление integration с учётом proxy failure semantics.
+- `libraries/nestjs-libraries/src/integrations/refresh.integration.service.ts` — refresh через `Integration.proxy`, сохранение proxy после успеха и disconnect при proxy failure.
+- Возможно: `proxy.errors.ts` и `proxy.http.service.ts` — явные proxy-specific ошибки, нормализация fail closed и безопасное логирование.
+
+## Риски и компромиссы
+
+- Fail closed намеренно ухудшает доступность при выбранном proxy, но защищает от незаметного обхода пользовательского выбора через direct fallback.
+- Отложенная валидация proxy до callback/refresh оставляет прежний UX старта OAuth и не блокирует redirect, но ошибка возникает позже — её нужно сделать явно proxy-specific.
+- Refresh сохраняет существующую жёсткую semantics disconnect при ошибке, даже если причина связана с proxy, чтобы не вводить отдельное частично-подключённое состояние.
+- Единый path через `ProxyHttpService.fetch(..., null)` для no-proxy сценария уменьшает расхождения между proxy и direct flow.
+
+## Связанные записи
+
+- [Архитектурные решения](index.md)
+- [Добавление proxy в модель Integration и flow подключения соцсети](integration-proxy-flow.md)
+- [Кастомный server-side HTTP-клиент с proxy для posting flow](add-custom-axios-proxy-client.md)
+- [Корень базы знаний](../root.md)

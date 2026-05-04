@@ -25,6 +25,14 @@ import utc from 'dayjs/plugin/utc';
 import { AutopostRepository } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.repository';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { TemporalService } from 'nestjs-temporal-core';
+import { ProxyHttpService } from '@gitroom/nestjs-libraries/http/proxy.http.service';
+import {
+  isAuthProxyProviderIdentifier,
+} from '@gitroom/nestjs-libraries/integrations/social.auth.proxy.providers';
+import { ProxyUnavailableError } from '@gitroom/nestjs-libraries/http/proxy.errors';
+
+const PROXY_REFRESH_FAILURE_CAUSE =
+  'because the selected proxy may be unavailable. Please choose another proxy or No Proxy and reconnect';
 
 dayjs.extend(utc);
 
@@ -38,7 +46,8 @@ export class IntegrationService {
     private _notificationService: NotificationService,
     @Inject(forwardRef(() => RefreshIntegrationService))
     private _refreshIntegrationService: RefreshIntegrationService,
-    private _temporalService: TemporalService
+    private _temporalService: TemporalService,
+    private _proxyHttpService: ProxyHttpService
   ) {}
 
   async changeActiveCron(orgId: string) {
@@ -167,10 +176,22 @@ export class IntegrationService {
     return this._integrationRepository.getIntegrationById(org, id);
   }
 
-  async refreshToken(provider: SocialProvider, refresh: string) {
+  async refreshToken(
+    provider: SocialProvider,
+    refresh: string,
+    proxyId?: string | null
+  ) {
     try {
       const { refreshToken, accessToken, expiresIn } =
-        await provider.refreshToken(refresh);
+        await provider.refreshToken(
+          refresh,
+          isAuthProxyProviderIdentifier(provider.identifier)
+            ? {
+                proxyId: proxyId ?? null,
+                proxyHttpService: this._proxyHttpService,
+              }
+            : undefined
+        );
 
       if (!refreshToken || !accessToken || !expiresIn) {
         return false;
@@ -178,13 +199,17 @@ export class IntegrationService {
 
       return { refreshToken, accessToken, expiresIn };
     } catch (e) {
+      if (e instanceof ProxyUnavailableError) {
+        throw e;
+      }
+
       return false;
     }
   }
 
-  async disconnectChannel(orgId: string, integration: Integration) {
+  async disconnectChannel(orgId: string, integration: Integration, err = '') {
     await this._integrationRepository.disconnectChannel(orgId, integration.id);
-    await this.informAboutRefreshError(orgId, integration);
+    await this.informAboutRefreshError(orgId, integration, err);
   }
 
   async informAboutRefreshError(
@@ -217,12 +242,24 @@ export class IntegrationService {
         integration.providerIdentifier
       );
 
-      const data = await this.refreshToken(provider, integration.refreshToken!);
+      let failureCause = '';
+      const data = await this.refreshToken(
+        provider,
+        integration.refreshToken!,
+        integration.proxy ?? null
+      ).catch((err) => {
+        if (err instanceof ProxyUnavailableError) {
+          failureCause = PROXY_REFRESH_FAILURE_CAUSE;
+        }
+
+        return false;
+      });
 
       if (!data) {
         await this.informAboutRefreshError(
           integration.organizationId,
-          integration
+          integration,
+          failureCause
         );
         await this._integrationRepository.refreshNeeded(
           integration.organizationId,

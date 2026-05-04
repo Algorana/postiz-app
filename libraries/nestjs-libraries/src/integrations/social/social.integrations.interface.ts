@@ -1,10 +1,19 @@
 import { Integration } from '@prisma/client';
+import type {
+  ProxyHttpService,
+} from '@gitroom/nestjs-libraries/http/proxy.http.service';
 
 export interface ClientInformation {
   client_id: string;
   client_secret: string;
   instanceUrl: string;
 }
+
+export type AuthProxyContext = {
+  proxyId: string | null;
+  proxyHttpService: ProxyHttpService;
+};
+
 export interface IAuthenticator {
   authenticate(
     params: {
@@ -12,9 +21,13 @@ export interface IAuthenticator {
       codeVerifier: string;
       refresh?: string;
     },
-    clientInformation?: ClientInformation
+    clientInformation?: ClientInformation,
+    authProxyContext?: AuthProxyContext
   ): Promise<AuthTokenDetails | string>;
-  refreshToken(refreshToken: string): Promise<AuthTokenDetails>;
+  refreshToken(
+    refreshToken: string,
+    authProxyContext?: AuthProxyContext
+  ): Promise<AuthTokenDetails>;
   reConnect?(
     id: string,
     requiredId: string,
