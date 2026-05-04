@@ -1,7 +1,7 @@
 'use client';
 
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
-import React, { FC, useCallback, useMemo } from 'react';
+import React, { FC, useCallback, useMemo, useRef } from 'react';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { Input } from '@gitroom/react/form/input';
 import { FieldValues, FormProvider, useForm } from 'react-hook-form';
@@ -35,7 +35,12 @@ export const useAddProvider = (update?: () => void, invite?: boolean) => {
       title: 'Add Channel',
       withCloseButton: true,
       children: (
-        <AddProviderComponent invite={!!invite} update={update} {...data} />
+        <AddProviderComponent
+          invite={!!invite}
+          update={update}
+          {...data}
+          standalonePopup
+        />
       ),
     });
   }, []);
@@ -113,8 +118,10 @@ export const AddProviderButton: FC<{
 
 export const UrlModal: FC<{
   gotoUrl(url: string): void;
+  close?: () => void;
 }> = (props) => {
-  const { gotoUrl } = props;
+  const { close, gotoUrl } = props;
+  const modals = useModals();
   const methods = useForm({
     mode: 'onChange',
   });
@@ -128,7 +135,7 @@ export const UrlModal: FC<{
     <div className="rounded-[4px] border border-customColor6 bg-sixth px-[16px] pb-[16px] relative">
       <TopTitle title={`Instance URL`} />
       <button
-        onClick={close}
+        onClick={() => (close || modals.closeCurrent)()}
         className="outline-none absolute end-[20px] top-[20px] mantine-UnstyledButton-root mantine-ActionIcon-root hover:bg-tableBorder cursor-pointer mantine-Modal-close mantine-1dcetaa"
         type="button"
       >
@@ -389,13 +396,16 @@ export const AddProviderComponent: FC<{
   update?: () => void;
   onboarding?: boolean;
   isMobile?: boolean;
+  standalonePopup?: boolean;
 }> = (props) => {
-  const { update, social, article, onboarding, isMobile } = props;
+  const { update, social, article, onboarding, isMobile, standalonePopup } =
+    props;
   const { isGeneral, extensionId } = useVariables();
   const toaster = useToaster();
   const router = useRouter();
   const fetch = useFetch();
   const modal = useModals();
+  const providerFlowPendingRef = useRef(false);
   const getSocialLink = useCallback(
     (
         invite: boolean,
@@ -412,10 +422,17 @@ export const AddProviderComponent: FC<{
         }>
       ) =>
       async () => {
+        if (providerFlowPendingRef.current) {
+          return;
+        }
+
+        providerFlowPendingRef.current = true;
+
         const continueWithProxy = async (
           selectedProxy: IntegrationProxySelection
         ) => {
           const onboardingParam = onboarding ? 'true' : undefined;
+          try {
           const openWeb3 = async () => {
             const { component: Web3Providers } = web3List.find(
               (item) => item.identifier === identifier
@@ -534,7 +551,10 @@ export const AddProviderComponent: FC<{
             if (!confirmed) {
               return;
             }
-            if (!extensionId || !chrome?.runtime?.sendMessage) {
+            const chromeRuntime =
+              typeof chrome !== 'undefined' ? chrome.runtime : undefined;
+
+            if (!extensionId || !chromeRuntime?.sendMessage) {
               modal.openModal({
                 title: t(
                   'extension_not_available_title',
@@ -547,11 +567,11 @@ export const AddProviderComponent: FC<{
             }
             try {
               await new Promise<void>((resolve, reject) => {
-                chrome.runtime.sendMessage(
+                chromeRuntime.sendMessage(
                   extensionId,
                   { type: 'PING' },
                   (response: any) => {
-                    if (chrome.runtime.lastError || !response?.status) {
+                    if (chromeRuntime.lastError || !response?.status) {
                       reject(new Error('Extension not reachable'));
                     } else {
                       resolve();
@@ -572,12 +592,12 @@ export const AddProviderComponent: FC<{
             try {
               const cookieResponse = await new Promise<any>(
                 (resolve, reject) => {
-                  chrome.runtime.sendMessage(
+                  chromeRuntime.sendMessage(
                     extensionId,
                     { type: 'GET_COOKIES', provider: identifier },
                     (response: any) => {
-                      if (chrome.runtime.lastError) {
-                        reject(new Error(chrome.runtime.lastError.message));
+                      if (chromeRuntime.lastError) {
+                        reject(new Error(chromeRuntime.lastError.message));
                       } else {
                         resolve(response);
                       }
@@ -627,7 +647,9 @@ export const AddProviderComponent: FC<{
               classNames: {
                 modal: 'bg-transparent text-textColor',
               },
-              children: <UrlModal gotoUrl={gotoIntegration} />,
+              children: (close) => (
+                <UrlModal close={close} gotoUrl={gotoIntegration} />
+              ),
             });
             return;
           }
@@ -658,13 +680,50 @@ export const AddProviderComponent: FC<{
             return;
           }
           await gotoIntegration();
+          } catch (err) {
+            if (standalonePopup) {
+              toaster.show(
+                t(
+                  'could_not_connect_to_platform',
+                  'Could not connect to the platform'
+                ),
+                'warning'
+              );
+              return;
+            }
+
+            throw err;
+          } finally {
+            if (!standalonePopup) {
+              providerFlowPendingRef.current = false;
+            }
+          }
         };
 
-        modal.openModal({
-          title: t('select_proxy', 'Select proxy'),
-          withCloseButton: true,
-          children: <IntegrationProxySelector onContinue={continueWithProxy} />,
-        });
+        const openProxyModal = () => {
+          modal.openModal({
+            title: t('select_proxy', 'Select proxy'),
+            withCloseButton: true,
+            onClose: () => {
+              providerFlowPendingRef.current = false;
+            },
+            children: (
+              <IntegrationProxySelector
+                onContinue={continueWithProxy}
+                instantContinue={!!standalonePopup}
+                closeBeforeContinue={!!standalonePopup}
+              />
+            ),
+          });
+        };
+
+        if (standalonePopup) {
+          modal.closeCurrent();
+          openProxyModal();
+          return;
+        }
+
+        openProxyModal();
       },
     [onboarding]
   );
