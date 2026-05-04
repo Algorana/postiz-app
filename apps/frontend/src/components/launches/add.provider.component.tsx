@@ -26,6 +26,11 @@ import {
 } from '@gitroom/frontend/components/launches/helpers/use.integration.proxies';
 const resolver = classValidatorResolver(ApiKeyDto);
 
+const MAIN_ADD_CHANNEL_PROVIDER_IDENTIFIERS = [
+  'tiktok',
+  'instagram-standalone',
+];
+
 export const useAddProvider = (update?: () => void, invite?: boolean) => {
   const modal = useModals();
   const fetch = useFetch();
@@ -37,6 +42,7 @@ export const useAddProvider = (update?: () => void, invite?: boolean) => {
       children: (
         <AddProviderComponent
           invite={!!invite}
+          restrictMainAddChannelProviders={!invite}
           update={update}
           {...data}
           standalonePopup
@@ -397,10 +403,17 @@ export const AddProviderComponent: FC<{
   onboarding?: boolean;
   isMobile?: boolean;
   standalonePopup?: boolean;
+  restrictMainAddChannelProviders?: boolean;
 }> = (props) => {
-  const { update, social, article, onboarding, isMobile, standalonePopup } =
-    props;
-  const { isGeneral, extensionId } = useVariables();
+  const {
+    social,
+    invite,
+    onboarding,
+    isMobile,
+    standalonePopup,
+    restrictMainAddChannelProviders,
+  } = props;
+  const { extensionId } = useVariables();
   const toaster = useToaster();
   const router = useRouter();
   const fetch = useFetch();
@@ -730,6 +743,30 @@ export const AddProviderComponent: FC<{
 
   const t = useT();
 
+  const visibleSocial = useMemo(() => {
+    const filteredSocial = social.filter((item) => {
+      if (!invite) {
+        return true;
+      }
+
+      return (
+        !item.isExternal &&
+        !item.isWeb3 &&
+        !item.isChromeExtension &&
+        !item.customFields
+      );
+    });
+
+    if (!restrictMainAddChannelProviders) {
+      return filteredSocial;
+    }
+
+    // HIDDEN: unused providers in main Add Channel, see hided/README.md
+    return filteredSocial.filter((item) =>
+      MAIN_ADD_CHANNEL_PROVIDER_IDENTIFIERS.includes(item.identifier)
+    );
+  }, [invite, restrictMainAddChannelProviders, social]);
+
   return (
     <div className="w-full flex flex-col gap-[20px] rounded-[4px] relative]">
       <div className="flex flex-col">
@@ -737,47 +774,40 @@ export const AddProviderComponent: FC<{
           className={clsx(
             isMobile && 'gap-[20px] flex flex-col',
             !isMobile &&
-              'grid grid-cols-5 gap-[10px] justify-items-center justify-center',
-            isMobile ? {} : onboarding ? 'grid-cols-9' : 'grid-cols-5'
+              'grid gap-[10px] justify-items-center justify-center',
+            isMobile
+              ? {}
+              : restrictMainAddChannelProviders
+              ? 'grid-cols-2 max-w-[320px] mx-auto'
+              : onboarding
+              ? 'grid-cols-9'
+              : 'grid-cols-5'
           )}
         >
-          {social
-            .filter((item) => {
-              if (!props.invite) {
-                return true;
-              }
-
-              return (
-                !item.isExternal &&
-                !item.isWeb3 &&
-                !item.isChromeExtension &&
-                !item.customFields
-              );
-            })
-            .map((item) => (
-              <div
-                key={item.identifier}
-                onClick={getSocialLink(
-                  props.invite,
-                  item.identifier,
-                  item.isExternal,
-                  item.isWeb3,
-                  item.isChromeExtension,
-                  item.customFields
-                )}
-                {...(!!item.toolTip
-                  ? {
-                      'data-tooltip-id': 'tooltip',
-                      'data-tooltip-content': item.toolTip,
-                    }
-                  : {})}
-                className={clsx(
-                  isMobile
-                    ? 'flex-row h-[72px] p-[16px]'
-                    : 'flex-col p-[10px] h-[100px] justify-center',
-                  'w-full text-[14px] rounded-[8px] bg-newTableHeader text-textColor relative items-center flex gap-[10px] cursor-pointer'
-                )}
-              >
+          {visibleSocial.map((item) => (
+            <div
+              key={item.identifier}
+              onClick={getSocialLink(
+                invite,
+                item.identifier,
+                item.isExternal,
+                item.isWeb3,
+                item.isChromeExtension,
+                item.customFields
+              )}
+              {...(!!item.toolTip
+                ? {
+                    'data-tooltip-id': 'tooltip',
+                    'data-tooltip-content': item.toolTip,
+                  }
+                : {})}
+              className={clsx(
+                isMobile
+                  ? 'flex-row h-[72px] p-[16px]'
+                  : 'flex-col p-[10px] h-[100px] justify-center',
+                'w-full text-[14px] rounded-[8px] bg-newTableHeader text-textColor relative items-center flex gap-[10px] cursor-pointer'
+              )}
+            >
                 <div>
                   {item.identifier === 'youtube' ? (
                     <img src={`/icons/platforms/youtube.svg`} />

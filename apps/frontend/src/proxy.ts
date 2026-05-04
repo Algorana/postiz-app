@@ -158,11 +158,9 @@ export async function proxy(request: NextRequest) {
       return redirect;
     }
     if (nextUrl.pathname === '/') {
+      // HIDDEN: unused analytics landing, see hided/README.md
       return NextResponse.redirect(
-        new URL(
-          !!process.env.IS_GENERAL ? '/launches' : `/analytics`,
-          nextUrl.href
-        )
+        new URL('/launches', nextUrl.href)
       );
     }
 

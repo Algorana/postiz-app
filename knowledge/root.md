@@ -8,6 +8,7 @@
 
 ## Важные решения
 
+- [Скрытие неиспользуемых frontend-функций](decisions/hide-unused-frontend-functions.md)
 - [Исправление Add Provider proxy modal flow](decisions/add-provider-proxy-modal-flow.md)
 - [Кастомный server-side HTTP-клиент с proxy для posting flow](decisions/add-custom-axios-proxy-client.md)
 - [Добавление proxy в модель Integration и flow подключения соцсети](decisions/integration-proxy-flow.md)

@@ -160,6 +160,12 @@ export const useMenuItem = () => {
     },
   ] satisfies MenuItemInterface[] as MenuItemInterface[];
 
+  // HIDDEN: unused features, see hided/README.md
+  const visibleFirstMenu = firstMenu.filter(
+    (item) =>
+      !['/agents', '/analytics', '/plugs', '/third-party'].includes(item.path)
+  );
+
   const secondMenu = [
     {
       name: t('UGC', 'UGC'),
@@ -307,8 +313,8 @@ export const useMenuItem = () => {
   ] satisfies MenuItemInterface[] as MenuItemInterface[];
 
   return {
-    all: [...firstMenu, ...secondMenu],
-    firstMenu,
+    all: [...visibleFirstMenu, ...secondMenu],
+    firstMenu: visibleFirstMenu,
     secondMenu,
   };
 };

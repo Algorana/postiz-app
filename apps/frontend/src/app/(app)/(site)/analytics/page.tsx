@@ -1,11 +1,12 @@
 export const dynamic = 'force-dynamic';
 import { Metadata } from 'next';
-import { PlatformAnalytics } from '@gitroom/frontend/components/platform-analytics/platform.analytics';
+import { notFound } from 'next/navigation';
 import { isGeneralServerSide } from '@gitroom/helpers/utils/is.general.server.side';
 export const metadata: Metadata = {
   title: `${isGeneralServerSide() ? 'Postiz' : 'Gitroom'} Analytics`,
   description: '',
 };
 export default async function Index() {
-  return <PlatformAnalytics />;
+  // HIDDEN: unused feature, see hided/README.md
+  return notFound();
 }
