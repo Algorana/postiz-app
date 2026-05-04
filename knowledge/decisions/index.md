@@ -4,6 +4,7 @@
 
 ## Записи
 
+- [Кастомный server-side HTTP-клиент с proxy для posting flow](add-custom-axios-proxy-client.md)
 - [Добавление proxy в модель Integration и flow подключения соцсети](integration-proxy-flow.md)
 
 ## Навигация

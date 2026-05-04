@@ -40,6 +40,10 @@ import { OAuthRepository } from '@gitroom/nestjs-libraries/database/prisma/oauth
 import { OAuthService } from '@gitroom/nestjs-libraries/database/prisma/oauth/oauth.service';
 import { AnnouncementsRepository } from '@gitroom/nestjs-libraries/database/prisma/announcements/announcements.repository';
 import { AnnouncementsService } from '@gitroom/nestjs-libraries/database/prisma/announcements/announcements.service';
+import { ProxyRepository } from '@gitroom/nestjs-libraries/database/prisma/proxies/proxy.repository';
+import { ProxyService } from '@gitroom/nestjs-libraries/database/prisma/proxies/proxy.service';
+import { CustomAxiosClient } from '@gitroom/nestjs-libraries/http/custom.axios.client';
+import { ProxyHttpService } from '@gitroom/nestjs-libraries/http/proxy.http.service';
 
 @Global()
 @Module({
@@ -89,6 +93,10 @@ import { AnnouncementsService } from '@gitroom/nestjs-libraries/database/prisma/
     VideoManager,
     AnnouncementsRepository,
     AnnouncementsService,
+    ProxyRepository,
+    ProxyService,
+    CustomAxiosClient,
+    ProxyHttpService,
   ],
   get exports() {
     return this.providers;

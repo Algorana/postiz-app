@@ -24,6 +24,7 @@ import {
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.service';
+import { ProxyService } from '@gitroom/nestjs-libraries/database/prisma/proxies/proxy.service';
 
 @ApiTags('Integrations')
 @Controller('/integrations')
@@ -32,7 +33,8 @@ export class NoAuthIntegrationsController {
     private _integrationManager: IntegrationManager,
     private _integrationService: IntegrationService,
     private _refreshIntegrationService: RefreshIntegrationService,
-    private _organizationService: OrganizationService
+    private _organizationService: OrganizationService,
+    private _proxyService: ProxyService
   ) {}
 
   @Get('/')
@@ -41,8 +43,8 @@ export class NoAuthIntegrationsController {
   }
 
   @Get('/proxies')
-  getIntegrationProxies(): IntegrationProxyDto[] {
-    return [];
+  getIntegrationProxies(): Promise<IntegrationProxyDto[]> {
+    return this._proxyService.getIntegrationProxies();
   }
 
   @Post('/social-connect/:integration')

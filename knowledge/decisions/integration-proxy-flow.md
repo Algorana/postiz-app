@@ -72,8 +72,10 @@
 - Fallback `null` при потере Redis key сохраняет устойчивость OAuth flow, но может потерять выбор пользователя.
 - Для reconnect выбор `No Proxy` намеренно очищает ранее сохранённый `Integration.proxy`, потому что sentinel не отправляется, а callback получает fallback `null`.
 - Реальное сетевое применение proxy отложено на будущую итерацию и должно быть описано отдельно.
+- Последующая итерация описана в решении [Кастомный server-side HTTP-клиент с proxy для posting flow](add-custom-axios-proxy-client.md): proxy применяется только к внешним social/provider API-запросам во время posting; SDK/специализированные posting-клиенты без гарантированной proxy-поддержки должны fail closed при выбранном proxy; загрузки исходных медиа из Postiz storage/CDN/media-source URL не проксируются.
 
 ## Связанные записи
 
 - [Архитектурные решения](index.md)
+- [Кастомный server-side HTTP-клиент с proxy для posting flow](add-custom-axios-proxy-client.md)
 - [Корень базы знаний](../root.md)
