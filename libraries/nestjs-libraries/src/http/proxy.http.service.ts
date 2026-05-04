@@ -1,10 +1,11 @@
 import axios, { AxiosResponse } from 'axios';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   CustomAxiosClient,
   CustomAxiosRequestConfig,
 } from '@gitroom/nestjs-libraries/http/custom.axios.client';
 import { ProxyService } from '@gitroom/nestjs-libraries/database/prisma/proxies/proxy.service';
+import type { PostingProxy } from '@gitroom/nestjs-libraries/database/prisma/proxies/proxy.repository';
 import { ProxyUnavailableError } from '@gitroom/nestjs-libraries/http/proxy.errors';
 
 export type ProxyAxiosRequestConfig<D = any> = Omit<
@@ -16,6 +17,8 @@ export type ProxyAxiosRequestConfig<D = any> = Omit<
 
 @Injectable()
 export class ProxyHttpService {
+  private readonly logger = new Logger(ProxyHttpService.name);
+
   constructor(
     private _proxyService: ProxyService,
     private _customAxiosClient: CustomAxiosClient
@@ -25,7 +28,12 @@ export class ProxyHttpService {
     config: ProxyAxiosRequestConfig<D>
   ): Promise<R> {
     const { proxyId, ...axiosConfig } = config;
-    const proxyParameter = await this.resolveProxyParameter(proxyId);
+    const proxy = await this.resolveProxy(proxyId);
+    const proxyParameter = proxy?.proxyParameter || null;
+
+    if (proxy) {
+      this.logProxiedRequest(proxy, axiosConfig.method, axiosConfig.url);
+    }
 
     try {
       return await this._customAxiosClient.request<T, R, D>({
@@ -104,7 +112,12 @@ export class ProxyHttpService {
     options: RequestInit = {},
     proxyId?: string | null
   ): Promise<Response> {
-    const proxyParameter = await this.resolveProxyParameter(proxyId);
+    const proxy = await this.resolveProxy(proxyId);
+    const proxyParameter = proxy?.proxyParameter || null;
+
+    if (proxy) {
+      this.logProxiedRequest(proxy, options.method || 'GET', url);
+    }
 
     try {
       return await this._customAxiosClient.fetch(
@@ -118,7 +131,9 @@ export class ProxyHttpService {
     }
   }
 
-  private async resolveProxyParameter(proxyId?: string | null) {
+  private async resolveProxy(
+    proxyId?: string | null
+  ): Promise<PostingProxy | null> {
     if (!proxyId) {
       return null;
     }
@@ -129,9 +144,41 @@ export class ProxyHttpService {
         throw new ProxyUnavailableError();
       }
 
-      return proxy.proxyParameter;
+      return proxy;
     } catch (err) {
       throw new ProxyUnavailableError();
+    }
+  }
+
+  private logProxiedRequest(
+    proxy: PostingProxy,
+    method?: string,
+    targetUrl?: string
+  ) {
+    this.logger.log(
+      `Proxied provider HTTP request ${JSON.stringify({
+        proxyId: proxy.id,
+        proxyName: proxy.name,
+        method: String(method || 'GET').toUpperCase(),
+        targetOrigin: this.getSafeTargetOrigin(targetUrl),
+      })}`
+    );
+  }
+
+  private getSafeTargetOrigin(targetUrl?: string) {
+    if (!targetUrl) {
+      return undefined;
+    }
+
+    try {
+      const url = new URL(targetUrl);
+      if (!['http:', 'https:'].includes(url.protocol)) {
+        return undefined;
+      }
+
+      return `${url.protocol}//${url.host}`;
+    } catch (err) {
+      return undefined;
     }
   }
 
