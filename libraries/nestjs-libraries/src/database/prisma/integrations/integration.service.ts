@@ -255,7 +255,7 @@ export class IntegrationService {
         return false;
       });
 
-      if (!data) {
+      if (!data || typeof data !== 'object') {
         await this.informAboutRefreshError(
           integration.organizationId,
           integration,

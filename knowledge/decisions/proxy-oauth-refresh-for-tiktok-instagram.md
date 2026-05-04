@@ -65,6 +65,19 @@
 - Refresh сохраняет существующую жёсткую semantics disconnect при ошибке, даже если причина связана с proxy, чтобы не вводить отдельное частично-подключённое состояние.
 - Единый path через `ProxyHttpService.fetch(..., null)` для no-proxy сценария уменьшает расхождения между proxy и direct flow.
 
+## Результат validation
+
+Проверено на стадии Validation после реализации основной feature в HEAD commit `136e6299`.
+
+- `pnpm --filter ./apps/backend run build` — PASS.
+- `git diff --check` — PASS.
+- `git status --short` после проверки показывал только незакоммиченное изменение `M libraries/nestjs-libraries/src/database/prisma/integrations/integration.service.ts`.
+- Ошибка TypeScript `TS2339`, найденная пользователем в backend build, больше не воспроизводится.
+
+Дополнительный fix в `libraries/nestjs-libraries/src/database/prisma/integrations/integration.service.ts`: проверка результата refresh изменена с `if (!data)` на `if (!data || typeof data !== 'object')`. Причина: результат refresh имеет тип `true | { refreshToken; accessToken; expiresIn }`; non-object successful/legacy result должен считаться failure для дальнейшего обновления токенов и не должен деструктурироваться.
+
+Важное подтверждённое решение: при successful refresh proxy не передаётся обратно в `createOrUpdateIntegration`, чтобы не перезаписать конкурентно изменённый `Integration.proxy`. Repository должен сохранить текущий proxy, если значение proxy при обновлении равно `undefined`.
+
 ## Связанные записи
 
 - [Архитектурные решения](index.md)
