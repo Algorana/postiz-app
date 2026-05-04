@@ -19,6 +19,11 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import clsx from 'clsx';
 import copy from 'copy-to-clipboard';
 import { capitalize } from 'lodash';
+import {
+  buildIntegrationSocialUrl,
+  IntegrationProxySelector,
+  type IntegrationProxySelection,
+} from '@gitroom/frontend/components/launches/helpers/use.integration.proxies';
 const resolver = classValidatorResolver(ApiKeyDto);
 
 export const useAddProvider = (update?: () => void, invite?: boolean) => {
@@ -170,8 +175,9 @@ export const CustomVariables: FC<{
   identifier: string;
   gotoUrl(url: string): void;
   onboarding?: boolean;
+  proxy?: IntegrationProxySelection;
 }> = (props) => {
-  const { close, gotoUrl, identifier, variables, onboarding } = props;
+  const { close, gotoUrl, identifier, variables, onboarding, proxy } = props;
   const fetch = useFetch();
   const modals = useModals();
   const schema = useMemo(() => {
@@ -210,9 +216,10 @@ export const CustomVariables: FC<{
     async (data: FieldValues) => {
       const { url } = await (
         await fetch(
-          `/integrations/social/${identifier}${
-            onboarding ? '?onboarding=true' : ''
-          }`
+          buildIntegrationSocialUrl(identifier, {
+            onboarding: onboarding ? 'true' : undefined,
+            proxy: proxy ?? undefined,
+          })
         )
       ).json();
       modals.closeAll();
@@ -222,7 +229,7 @@ export const CustomVariables: FC<{
         ).toString('base64')}${onboarding ? '&onboarding=true' : ''}`
       );
     },
-    [variables, onboarding]
+    [variables, onboarding, proxy]
   );
 
   const t = useT();
@@ -405,241 +412,259 @@ export const AddProviderComponent: FC<{
         }>
       ) =>
       async () => {
-        const onboardingParam = onboarding ? 'onboarding=true' : '';
-        const openWeb3 = async () => {
-          const { component: Web3Providers } = web3List.find(
-            (item) => item.identifier === identifier
-          )!;
-          const { url } = await (
-            await fetch(
-              `/integrations/social/${identifier}${
-                onboarding ? '?onboarding=true' : ''
-              }`
-            )
-          ).json();
-          modal.openModal({
-            title: `Add ${capitalize(identifier)}`,
-            withCloseButton: true,
-            ...(isMobile ? { removeLayout: true, fullScreen: true } : {}),
-            classNames: {
-              modal: 'bg-transparent text-textColor',
-            },
-            children: (
-              <div
-                {...(isMobile ? { className: 'h-full bg-black p-[20px]' } : {})}
-              >
-                <Web3Providers
-                  onComplete={(code, newState) => {
-                    window.location.href = `/integrations/social/${identifier}?code=${code}&state=${newState}${
-                      onboarding ? '&onboarding=true' : ''
-                    }`;
-                  }}
-                  nonce={url}
-                />
-              </div>
-            ),
-          });
-          return;
-        };
-        const gotoIntegration = async (externalUrl?: string) => {
-          // Mobile WebView: reuse the existing `externalUrl` param to
-          // carry the `postiz://` deep link so the backend redirects
-          // back to the iOS/Android app after OAuth completes, instead
-          // of the default web redirect.
-          const params = [
-            `externalUrl=${encodeURIComponent(externalUrl)}`,
-            onboardingParam,
-            isMobile
-              ? `redirectUrl=${encodeURIComponent('postiz://integrations')}`
-              : '',
-          ]
-            .filter(Boolean)
-            .join('&');
-          const { url, err } = await (
-            await fetch(
-              `/integrations/social/${identifier}${params ? `?${params}` : ''}`
-            )
-          ).json();
-          if (err) {
-            toaster.show(
-              t(
-                'could_not_connect_to_platform',
-                'Could not connect to the platform'
-              ),
-              'warning'
-            );
-            return;
-          }
-
-          if (invite) {
-            toaster.show(
-              'Invite link copied to clipboard, link will be available for 1 hour',
-              'success'
-            );
-            modal.closeAll();
-            copy(url);
-            return;
-          }
-
-          if (isMobile) {
-            // In the mobile WebView the OAuth provider (Google, Facebook,
-            // etc.) typically refuses in-WebView sign-in. Post the URL
-            // out to React Native so it can open the system browser;
-            // `window.open`/`location.href` aren't reliable here because
-            // RN WebView doesn't always route them through the native
-            // navigation intercept. The backend redirects back to the
-            // app via `postiz://` once OAuth completes.
-            const rn = (window as any).ReactNativeWebView;
-            if (rn && typeof rn.postMessage === 'function') {
-              rn.postMessage(JSON.stringify({ type: 'open-external', url }));
-              return;
-            }
-            window.open(url, '_blank');
-            return;
-          }
-
-          window.location.href = url;
-        };
-        if (isWeb3) {
-          openWeb3();
-          return;
-        }
-        if (isChromeExtension) {
-          const confirmed = await new Promise<boolean>((resolve) => {
+        const continueWithProxy = async (
+          selectedProxy: IntegrationProxySelection
+        ) => {
+          const onboardingParam = onboarding ? 'true' : undefined;
+          const openWeb3 = async () => {
+            const { component: Web3Providers } = web3List.find(
+              (item) => item.identifier === identifier
+            )!;
+            const { url } = await (
+              await fetch(
+                buildIntegrationSocialUrl(identifier, {
+                  onboarding: onboardingParam,
+                  proxy: selectedProxy ?? undefined,
+                })
+              )
+            ).json();
             modal.openModal({
-              title: t('chrome_extension_notice', 'Browser Extension Notice'),
+              title: `Add ${capitalize(identifier)}`,
               withCloseButton: true,
-              onClose: () => resolve(false),
+              ...(isMobile ? { removeLayout: true, fullScreen: true } : {}),
+              classNames: {
+                modal: 'bg-transparent text-textColor',
+              },
               children: (
-                <ChromeExtensionWarning
-                  onConfirm={() => {
-                    resolve(true);
-                  }}
-                  onCancel={() => {
-                    resolve(false);
-                  }}
-                />
+                <div
+                  {...(isMobile
+                    ? { className: 'h-full bg-black p-[20px]' }
+                    : {})}
+                >
+                  <Web3Providers
+                    onComplete={(code, newState) => {
+                      window.location.href = `/integrations/social/${identifier}?code=${code}&state=${newState}${
+                        onboarding ? '&onboarding=true' : ''
+                      }`;
+                    }}
+                    nonce={url}
+                  />
+                </div>
               ),
             });
-          });
-          if (!confirmed) {
             return;
-          }
-          if (!extensionId || !chrome?.runtime?.sendMessage) {
-            modal.openModal({
-              title: t('extension_not_available_title', 'Extension Not Found'),
-              withCloseButton: true,
-              children: <ExtensionNotFound />,
-            });
-            return;
-          }
-          try {
-            await new Promise<void>((resolve, reject) => {
-              chrome.runtime.sendMessage(
-                extensionId,
-                { type: 'PING' },
-                (response: any) => {
-                  if (chrome.runtime.lastError || !response?.status) {
-                    reject(new Error('Extension not reachable'));
-                  } else {
-                    resolve();
-                  }
-                }
-              );
-            });
-          } catch {
-            toaster.show(
-              t(
-                'extension_not_installed',
-                'Postiz browser extension is not installed or not reachable.'
-              ),
-              'warning'
-            );
-            return;
-          }
-          try {
-            const cookieResponse = await new Promise<any>((resolve, reject) => {
-              chrome.runtime.sendMessage(
-                extensionId,
-                { type: 'GET_COOKIES', provider: identifier },
-                (response: any) => {
-                  if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                  } else {
-                    resolve(response);
-                  }
-                }
-              );
-            });
-            if (!cookieResponse.success) {
+          };
+          const gotoIntegration = async (externalUrl?: string) => {
+            // Mobile WebView: reuse the existing `externalUrl` param to
+            // carry the `postiz://` deep link so the backend redirects
+            // back to the iOS/Android app after OAuth completes, instead
+            // of the default web redirect.
+            const { url, err } = await (
+              await fetch(
+                buildIntegrationSocialUrl(identifier, {
+                  externalUrl,
+                  onboarding: onboardingParam,
+                  redirectUrl: isMobile ? 'postiz://integrations' : undefined,
+                  proxy: selectedProxy ?? undefined,
+                })
+              )
+            ).json();
+            if (err) {
               toaster.show(
-                cookieResponse.error ||
-                  t(
-                    'extension_cookies_missing',
-                    'Could not get cookies. Please log in to the platform first.'
-                  ),
+                t(
+                  'could_not_connect_to_platform',
+                  'Could not connect to the platform'
+                ),
                 'warning'
               );
               return;
             }
-            const { url } = await (
-              await fetch(
-                `/integrations/social/${identifier}${
-                  onboarding ? '?onboarding=true' : ''
-                }`
-              )
-            ).json();
-            modal.closeAll();
-            window.location.href = `/integrations/social/${identifier}?state=${url}&code=${Buffer.from(
-              JSON.stringify(cookieResponse.cookies)
-            ).toString('base64')}${onboarding ? '&onboarding=true' : ''}`;
-          } catch {
-            toaster.show(
-              t(
-                'extension_communication_error',
-                'Failed to communicate with the browser extension.'
-              ),
-              'warning'
-            );
+
+            if (invite) {
+              toaster.show(
+                'Invite link copied to clipboard, link will be available for 1 hour',
+                'success'
+              );
+              modal.closeAll();
+              copy(url);
+              return;
+            }
+
+            if (isMobile) {
+              // In the mobile WebView the OAuth provider (Google, Facebook,
+              // etc.) typically refuses in-WebView sign-in. Post the URL
+              // out to React Native so it can open the system browser;
+              // `window.open`/`location.href` aren't reliable here because
+              // RN WebView doesn't always route them through the native
+              // navigation intercept. The backend redirects back to the
+              // app via `postiz://` once OAuth completes.
+              const rn = (window as any).ReactNativeWebView;
+              if (rn && typeof rn.postMessage === 'function') {
+                rn.postMessage(JSON.stringify({ type: 'open-external', url }));
+                return;
+              }
+              window.open(url, '_blank');
+              return;
+            }
+
+            window.location.href = url;
+          };
+          if (isWeb3) {
+            await openWeb3();
+            return;
           }
-          return;
-        }
-        if (isExternal) {
-          modal.openModal({
-            title: 'URL',
-            withCloseButton: true,
-            ...(isMobile ? { removeLayout: true, fullScreen: true } : {}),
-            classNames: {
-              modal: 'bg-transparent text-textColor',
-            },
-            children: <UrlModal gotoUrl={gotoIntegration} />,
-          });
-          return;
-        }
-        if (customFields) {
-          modal.openModal({
-            title: t('add_provider_title', 'Add Provider'),
-            withCloseButton: true,
-            ...(isMobile ? { removeLayout: true, fullScreen: true } : {}),
-            classNames: {
-              modal: 'bg-transparent text-textColor',
-            },
-            children: (
-              <div
-                {...(isMobile ? { className: 'h-full bg-black p-[20px]' } : {})}
-              >
-                <CustomVariables
-                  identifier={identifier}
-                  gotoUrl={(url: string) => router.push(url)}
-                  variables={customFields}
-                  onboarding={onboarding}
-                />
-              </div>
-            ),
-          });
-          return;
-        }
-        await gotoIntegration();
+          if (isChromeExtension) {
+            const confirmed = await new Promise<boolean>((resolve) => {
+              modal.openModal({
+                title: t('chrome_extension_notice', 'Browser Extension Notice'),
+                withCloseButton: true,
+                onClose: () => resolve(false),
+                children: (
+                  <ChromeExtensionWarning
+                    onConfirm={() => {
+                      resolve(true);
+                    }}
+                    onCancel={() => {
+                      resolve(false);
+                    }}
+                  />
+                ),
+              });
+            });
+            if (!confirmed) {
+              return;
+            }
+            if (!extensionId || !chrome?.runtime?.sendMessage) {
+              modal.openModal({
+                title: t(
+                  'extension_not_available_title',
+                  'Extension Not Found'
+                ),
+                withCloseButton: true,
+                children: <ExtensionNotFound />,
+              });
+              return;
+            }
+            try {
+              await new Promise<void>((resolve, reject) => {
+                chrome.runtime.sendMessage(
+                  extensionId,
+                  { type: 'PING' },
+                  (response: any) => {
+                    if (chrome.runtime.lastError || !response?.status) {
+                      reject(new Error('Extension not reachable'));
+                    } else {
+                      resolve();
+                    }
+                  }
+                );
+              });
+            } catch {
+              toaster.show(
+                t(
+                  'extension_not_installed',
+                  'Postiz browser extension is not installed or not reachable.'
+                ),
+                'warning'
+              );
+              return;
+            }
+            try {
+              const cookieResponse = await new Promise<any>(
+                (resolve, reject) => {
+                  chrome.runtime.sendMessage(
+                    extensionId,
+                    { type: 'GET_COOKIES', provider: identifier },
+                    (response: any) => {
+                      if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message));
+                      } else {
+                        resolve(response);
+                      }
+                    }
+                  );
+                }
+              );
+              if (!cookieResponse.success) {
+                toaster.show(
+                  cookieResponse.error ||
+                    t(
+                      'extension_cookies_missing',
+                      'Could not get cookies. Please log in to the platform first.'
+                    ),
+                  'warning'
+                );
+                return;
+              }
+              const { url } = await (
+                await fetch(
+                  buildIntegrationSocialUrl(identifier, {
+                    onboarding: onboardingParam,
+                    proxy: selectedProxy ?? undefined,
+                  })
+                )
+              ).json();
+              modal.closeAll();
+              window.location.href = `/integrations/social/${identifier}?state=${url}&code=${Buffer.from(
+                JSON.stringify(cookieResponse.cookies)
+              ).toString('base64')}${onboarding ? '&onboarding=true' : ''}`;
+            } catch {
+              toaster.show(
+                t(
+                  'extension_communication_error',
+                  'Failed to communicate with the browser extension.'
+                ),
+                'warning'
+              );
+            }
+            return;
+          }
+          if (isExternal) {
+            modal.openModal({
+              title: 'URL',
+              withCloseButton: true,
+              ...(isMobile ? { removeLayout: true, fullScreen: true } : {}),
+              classNames: {
+                modal: 'bg-transparent text-textColor',
+              },
+              children: <UrlModal gotoUrl={gotoIntegration} />,
+            });
+            return;
+          }
+          if (customFields) {
+            modal.openModal({
+              title: t('add_provider_title', 'Add Provider'),
+              withCloseButton: true,
+              ...(isMobile ? { removeLayout: true, fullScreen: true } : {}),
+              classNames: {
+                modal: 'bg-transparent text-textColor',
+              },
+              children: (
+                <div
+                  {...(isMobile
+                    ? { className: 'h-full bg-black p-[20px]' }
+                    : {})}
+                >
+                  <CustomVariables
+                    identifier={identifier}
+                    gotoUrl={(url: string) => router.push(url)}
+                    variables={customFields}
+                    onboarding={onboarding}
+                    proxy={selectedProxy}
+                  />
+                </div>
+              ),
+            });
+            return;
+          }
+          await gotoIntegration();
+        };
+
+        modal.openModal({
+          title: t('select_proxy', 'Select proxy'),
+          withCloseButton: true,
+          children: <IntegrationProxySelector onContinue={continueWithProxy} />,
+        });
       },
     [onboarding]
   );

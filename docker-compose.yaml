@@ -48,6 +48,8 @@ services:
       POSTGRES_DB: postiz-db-local
     volumes:
       - postgres-volume:/var/lib/postgresql/data
+    ports:
+      - "6543:5432"
     networks:
       - postiz-network
     healthcheck:

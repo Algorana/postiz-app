@@ -1,6 +1,11 @@
 import { timer } from '@gitroom/helpers/utils/timer';
 import { Integration } from '@prisma/client';
 import { ApplicationFailure } from '@temporalio/activity';
+import { SocialPostingProxyContext } from '@gitroom/nestjs-libraries/integrations/social.posting.proxy.context';
+import {
+  PROXY_UNAVAILABLE_MESSAGE,
+  ProxyUnavailableError,
+} from '@gitroom/nestjs-libraries/http/proxy.errors';
 
 export class RefreshToken extends ApplicationFailure {
   constructor(identifier: string, json: string, body: BodyInit, message = '') {
@@ -44,6 +49,32 @@ function safeStringify(obj: any) {
     }
     return value;
   });
+}
+
+function isPostizMediaSourceUrl(url: string) {
+  try {
+    const parsedUrl = new URL(url);
+    const safeDirectOrigins = [
+      process.env.CLOUDFLARE_BUCKET_URL,
+      process.env.FRONTEND_URL,
+      process.env.NEXT_PUBLIC_BACKEND_URL,
+    ].filter(Boolean) as string[];
+
+    if (parsedUrl.hostname.endsWith('imagedelivery.net')) {
+      return true;
+    }
+
+    return safeDirectOrigins.some((origin) => {
+      try {
+        const parsedOrigin = new URL(origin);
+        return parsedOrigin.origin === parsedUrl.origin;
+      } catch (err) {
+        return url.startsWith(origin);
+      }
+    });
+  } catch (err) {
+    return true;
+  }
 }
 
 export abstract class SocialAbstract {
@@ -105,7 +136,31 @@ export abstract class SocialAbstract {
     totalRetries = 0,
     ignoreConcurrency = false
   ): Promise<Response> {
-    const request = await fetch(url, options);
+    const normalizedOptions = options || {};
+    const proxyContext = SocialPostingProxyContext.getStore();
+    let request: Response;
+
+    try {
+      request =
+        proxyContext?.proxyId && !isPostizMediaSourceUrl(url)
+          ? await proxyContext.proxyHttpService.fetch(
+              url,
+              normalizedOptions,
+              proxyContext.proxyId
+            )
+          : await fetch(url, normalizedOptions);
+    } catch (err) {
+      if (err instanceof ProxyUnavailableError) {
+        throw new BadBody(
+          identifier,
+          '{}',
+          normalizedOptions.body || '{}',
+          PROXY_UNAVAILABLE_MESSAGE
+        );
+      }
+
+      throw err;
+    }
 
     if (request.status === 200 || request.status === 201) {
       return request;

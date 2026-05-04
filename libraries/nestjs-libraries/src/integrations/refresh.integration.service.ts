@@ -7,6 +7,14 @@ import {
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { TemporalService } from 'nestjs-temporal-core';
+import { ProxyHttpService } from '@gitroom/nestjs-libraries/http/proxy.http.service';
+import { ProxyUnavailableError } from '@gitroom/nestjs-libraries/http/proxy.errors';
+import {
+  isAuthProxyProviderIdentifier,
+} from '@gitroom/nestjs-libraries/integrations/social.auth.proxy.providers';
+
+const PROXY_REFRESH_FAILURE_CAUSE =
+  'because the selected proxy may be unavailable. Please choose another proxy or No Proxy and reconnect';
 
 @Injectable()
 export class RefreshIntegrationService {
@@ -14,7 +22,8 @@ export class RefreshIntegrationService {
     private _integrationManager: IntegrationManager,
     @Inject(forwardRef(() => IntegrationService))
     private _integrationService: IntegrationService,
-    private _temporalService: TemporalService
+    private _temporalService: TemporalService,
+    private _proxyHttpService: ProxyHttpService
   ) {}
   async refresh(integration: Integration, cause = ''): Promise<false | AuthTokenDetails> {
     const socialProvider = this._integrationManager.getSocialIntegration(
@@ -73,9 +82,26 @@ export class RefreshIntegrationService {
     socialProvider: SocialProvider,
     cause = ''
   ): Promise<AuthTokenDetails | false> {
+    let failureCause = cause;
     const refresh: false | AuthTokenDetails = await socialProvider
-      .refreshToken(integration.refreshToken)
-      .catch((err) => false);
+      .refreshToken(
+        integration.refreshToken,
+        isAuthProxyProviderIdentifier(socialProvider.identifier)
+          ? {
+              proxyId: integration.proxy ?? null,
+              proxyHttpService: this._proxyHttpService,
+            }
+          : undefined
+      )
+      .catch((err) => {
+        if (err instanceof ProxyUnavailableError) {
+          failureCause = cause
+            ? `${cause} ${PROXY_REFRESH_FAILURE_CAUSE}`
+            : PROXY_REFRESH_FAILURE_CAUSE;
+        }
+
+        return false;
+      });
 
     if (!refresh || !refresh.accessToken) {
       await this._integrationService.refreshNeeded(
@@ -86,12 +112,13 @@ export class RefreshIntegrationService {
       await this._integrationService.informAboutRefreshError(
         integration.organizationId,
         integration,
-        cause
+        failureCause
       );
 
       await this._integrationService.disconnectChannel(
         integration.organizationId,
-        integration
+        integration,
+        failureCause
       );
 
       return false;

@@ -5,6 +5,11 @@ import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { ChartSocial } from '@gitroom/frontend/components/analytics/chart-social';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { useModals } from '@gitroom/frontend/components/layout/new-modal';
+import {
+  buildIntegrationSocialUrl,
+  IntegrationProxySelector,
+} from '@gitroom/frontend/components/launches/helpers/use.integration.proxies';
 
 interface AnalyticsDataItem {
   label: string;
@@ -35,10 +40,7 @@ const TrendIndicator: FC<{ value: number; average?: boolean }> = ({
         fill="none"
         className={isPositive ? '' : 'rotate-180'}
       >
-        <path
-          d="M6 2.5L10 7.5H2L6 2.5Z"
-          fill="currentColor"
-        />
+        <path d="M6 2.5L10 7.5H2L6 2.5Z" fill="currentColor" />
       </svg>
       <span>
         {displayValue}
@@ -87,7 +89,10 @@ const AnalyticsCard: FC<{
             </span>
           </div>
           {item.percentageChange !== undefined && (
-            <TrendIndicator value={item.percentageChange} average={item.average} />
+            <TrendIndicator
+              value={item.percentageChange}
+              average={item.average}
+            />
           )}
         </div>
 
@@ -97,7 +102,11 @@ const AnalyticsCard: FC<{
             {/* Chart */}
             <div className="flex-1 px-[12px] py-[8px]">
               <div className="h-[120px] relative">
-                <ChartSocial data={item.data} color={color} key={`chart-${index}`} />
+                <ChartSocial
+                  data={item.data}
+                  color={color}
+                  key={`chart-${index}`}
+                />
               </div>
             </div>
 
@@ -174,6 +183,8 @@ export const RenderAnalytics: FC<{
   const { integration, date } = props;
   const [loading, setLoading] = useState(true);
   const fetch = useFetch();
+  const modal = useModals();
+  const t = useT();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -201,26 +212,49 @@ export const RenderAnalytics: FC<{
         }
       ) =>
       async () => {
-        const { url } = await (
-          await fetch(
-            `/integrations/social/${integrationData.identifier}?refresh=${integrationData.internalId}`,
-            {
-              method: 'GET',
-            }
-          )
-        ).json();
-        window.location.href = url;
+        modal.openModal({
+          title: t('select_proxy', 'Select proxy'),
+          withCloseButton: true,
+          children: (
+            <IntegrationProxySelector
+              onContinue={async (selectedProxy) => {
+                const { url, err } = await (
+                  await fetch(
+                    buildIntegrationSocialUrl(integrationData.identifier, {
+                      refresh: integrationData.internalId,
+                      proxy: selectedProxy ?? undefined,
+                    }),
+                    {
+                      method: 'GET',
+                    }
+                  )
+                ).json();
+
+                if (err || !url) {
+                  throw new Error(
+                    t(
+                      'could_not_connect_to_platform',
+                      'Could not connect to the platform'
+                    )
+                  );
+                }
+
+                window.location.href = url;
+              }}
+            />
+          ),
+        });
       },
     []
   );
 
-  const t = useT();
-
   const totals = useMemo(() => {
     return data?.map((p: AnalyticsDataItem) => {
       const value =
-        (p?.data.reduce((acc: number, curr: { total: number }) => acc + curr.total, 0) || 0) /
-        (p.average ? p.data.length : 1);
+        (p?.data.reduce(
+          (acc: number, curr: { total: number }) => acc + curr.total,
+          0
+        ) || 0) / (p.average ? p.data.length : 1);
       if (p.average) {
         return value.toFixed(2) + '%';
       }

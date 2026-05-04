@@ -1,6 +1,8 @@
 import {
   AnalyticsData,
+  AuthProxyContext,
   AuthTokenDetails,
+  ClientInformation,
   PostDetails,
   PostResponse,
   SocialProvider,
@@ -14,6 +16,7 @@ import { TikTokDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settin
 import { timer } from '@gitroom/helpers/utils/timer';
 import { Integration } from '@prisma/client';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
+import { ProxyUnavailableError } from '@gitroom/nestjs-libraries/http/proxy.errors';
 
 @Rules(
   'TikTok can have one video or one picture or multiple pictures, it cannot be without an attachment'
@@ -36,6 +39,19 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
   editor = 'normal' as const;
   maxLength() {
     return 2000;
+  }
+
+  private getAuthProxyContext(
+    authProxyContext?: AuthProxyContext
+  ): AuthProxyContext {
+    if (
+      !authProxyContext?.proxyHttpService ||
+      authProxyContext.proxyId === undefined
+    ) {
+      throw new ProxyUnavailableError();
+    }
+
+    return authProxyContext;
   }
 
   override handleErrors(body: string):
@@ -237,7 +253,11 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     return undefined;
   }
 
-  async refreshToken(refreshToken: string): Promise<AuthTokenDetails> {
+  async refreshToken(
+    refreshToken: string,
+    authProxyContext?: AuthProxyContext
+  ): Promise<AuthTokenDetails> {
+    const proxyContext = this.getAuthProxyContext(authProxyContext);
     const value = {
       client_key: process.env.TIKTOK_CLIENT_ID!,
       client_secret: process.env.TIKTOK_CLIENT_SECRET!,
@@ -245,14 +265,18 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
       refresh_token: refreshToken,
     };
 
-    const { access_token, refresh_token, ...all } = await (
-      await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+    const { access_token, refresh_token } = await (
+      await proxyContext.proxyHttpService.fetch(
+        'https://open.tiktokapis.com/v2/oauth/token/',
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          method: 'POST',
+          body: new URLSearchParams(value).toString(),
         },
-        method: 'POST',
-        body: new URLSearchParams(value).toString(),
-      })
+        proxyContext.proxyId
+      )
     ).json();
 
     const {
@@ -260,14 +284,15 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
         user: { avatar_url, display_name, open_id, username },
       },
     } = await (
-      await fetch(
+      await proxyContext.proxyHttpService.fetch(
         'https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name,union_id,username',
         {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${access_token}`,
           },
-        }
+        },
+        proxyContext.proxyId
       )
     ).json();
 
@@ -304,11 +329,16 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  async authenticate(params: {
-    code: string;
-    codeVerifier: string;
-    refresh?: string;
-  }) {
+  async authenticate(
+    params: {
+      code: string;
+      codeVerifier: string;
+      refresh?: string;
+    },
+    _clientInformation?: ClientInformation,
+    authProxyContext?: AuthProxyContext
+  ) {
+    const proxyContext = this.getAuthProxyContext(authProxyContext);
     const value = {
       client_key: process.env.TIKTOK_CLIENT_ID!,
       client_secret: process.env.TIKTOK_CLIENT_SECRET!,
@@ -323,13 +353,17 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     };
 
     const { access_token, refresh_token, scope } = await (
-      await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+      await proxyContext.proxyHttpService.fetch(
+        'https://open.tiktokapis.com/v2/oauth/token/',
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          method: 'POST',
+          body: new URLSearchParams(value).toString(),
         },
-        method: 'POST',
-        body: new URLSearchParams(value).toString(),
-      })
+        proxyContext.proxyId
+      )
     ).json();
 
     this.checkScopes(this.scopes, scope);
@@ -339,14 +373,15 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
         user: { avatar_url, display_name, open_id, username },
       },
     } = await (
-      await fetch(
+      await proxyContext.proxyHttpService.fetch(
         'https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name,union_id,username',
         {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${access_token}`,
           },
-        }
+        },
+        proxyContext.proxyId
       )
     ).json();
 

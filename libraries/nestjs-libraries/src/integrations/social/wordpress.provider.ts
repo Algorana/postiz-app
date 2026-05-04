@@ -202,7 +202,7 @@ export class WordpressProvider
         postDetails[0].settings.main_image.path
       );
 
-      const blob = await this.fetch(
+      const blob = await fetch(
         postDetails[0].settings.main_image.path
       ).then((r) => r.blob());
 

@@ -229,7 +229,8 @@ export class IntegrationRepository {
     isBetweenSteps = false,
     refresh?: string,
     timezone?: number,
-    customInstanceDetails?: string
+    customInstanceDetails?: string,
+    proxy?: string | null
   ) {
     const postTimes = timezone
       ? {
@@ -265,6 +266,7 @@ export class IntegrationRepository {
         refreshNeeded: false,
         rootInternalId: internalId,
         ...(customInstanceDetails ? { customInstanceDetails } : {}),
+        ...(proxy !== undefined ? { proxy } : {}),
         additionalSettings: additionalSettings
           ? JSON.stringify(additionalSettings)
           : '[]',
@@ -281,6 +283,7 @@ export class IntegrationRepository {
             }
           : {}),
         ...(picture ? { picture } : {}),
+        ...(proxy !== undefined ? { proxy } : {}),
         profile: username,
         providerIdentifier: provider,
         token,

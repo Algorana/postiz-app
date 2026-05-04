@@ -24,6 +24,11 @@ import {
   postId as postIdSearchParam,
 } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
+import { ProxyHttpService } from '@gitroom/nestjs-libraries/http/proxy.http.service';
+import { SocialPostingProxyContext } from '@gitroom/nestjs-libraries/integrations/social.posting.proxy.context';
+import { isProxyUnsupportedPostingProvider } from '@gitroom/nestjs-libraries/integrations/social.proxy.unsupported';
+import { BadBody } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { PROXY_UNAVAILABLE_MESSAGE } from '@gitroom/nestjs-libraries/http/proxy.errors';
 
 @Injectable()
 @Activity()
@@ -36,8 +41,28 @@ export class PostActivity {
     private _refreshIntegrationService: RefreshIntegrationService,
     private _webhookService: WebhooksService,
     private _temporalService: TemporalService,
-    private _subscriptionService: SubscriptionService
+    private _subscriptionService: SubscriptionService,
+    private _proxyHttpService: ProxyHttpService
   ) {}
+
+  private getPostingProxyId(integration: Integration) {
+    return integration.proxy?.trim() ? integration.proxy : null;
+  }
+
+  private assertProxySupportedForPosting(integration: Integration) {
+    const proxyId = this.getPostingProxyId(integration);
+    if (
+      proxyId &&
+      isProxyUnsupportedPostingProvider(integration.providerIdentifier)
+    ) {
+      throw new BadBody(
+        integration.providerIdentifier,
+        '{}',
+        {} as BodyInit,
+        PROXY_UNAVAILABLE_MESSAGE
+      );
+    }
+  }
 
   @ActivityMethod()
   async getIntegrationById(orgId: string, id: string) {
@@ -87,7 +112,9 @@ export class PostActivity {
   @ActivityMethod()
   async getPostsList(orgId: string, postId: string) {
     if (process.env.STRIPE_SECRET_KEY) {
-      const subscription = await this._subscriptionService.getSubscription(orgId);
+      const subscription = await this._subscriptionService.getSubscription(
+        orgId
+      );
       if (!subscription) {
         return [];
       }
@@ -125,36 +152,48 @@ export class PostActivity {
       integration.providerIdentifier
     );
 
+    this.assertProxySupportedForPosting(integration);
+
     const newPosts = await this._postService.updateTags(
       integration.organizationId,
       posts
     );
 
-    return getIntegration.comment(
-      integration.internalId,
-      postId,
-      lastPostId,
-      integration.token,
-      await Promise.all(
-        (newPosts || []).map(async (p) => ({
-          id: p.id,
-          message: stripHtmlValidation(
-            getIntegration.editor,
-            p.content,
-            true,
-            false,
-            !/<\/?[a-z][\s\S]*>/i.test(p.content),
-            getIntegration.mentionFormat
-          ),
-          settings: JSON.parse(p.settings || '{}'),
-          media: await this._postService.updateMedia(
-            p.id,
-            JSON.parse(p.image || '[]'),
-            getIntegration?.convertToJPEG || false
-          ),
-        }))
-      ),
-      integration
+    const postDetails = await Promise.all(
+      (newPosts || []).map(async (p) => ({
+        id: p.id,
+        message: stripHtmlValidation(
+          getIntegration.editor,
+          p.content,
+          true,
+          false,
+          !/<\/?[a-z][\s\S]*>/i.test(p.content),
+          getIntegration.mentionFormat
+        ),
+        settings: JSON.parse(p.settings || '{}'),
+        media: await this._postService.updateMedia(
+          p.id,
+          JSON.parse(p.image || '[]'),
+          getIntegration?.convertToJPEG || false
+        ),
+      }))
+    );
+
+    return SocialPostingProxyContext.run(
+      {
+        proxyId: this.getPostingProxyId(integration),
+        providerIdentifier: integration.providerIdentifier,
+        proxyHttpService: this._proxyHttpService,
+      },
+      () =>
+        getIntegration.comment(
+          integration.internalId,
+          postId,
+          lastPostId,
+          integration.token,
+          postDetails,
+          integration
+        )
     );
   }
 
@@ -164,36 +203,48 @@ export class PostActivity {
       integration.providerIdentifier
     );
 
+    this.assertProxySupportedForPosting(integration);
+
     const newPosts = await this._postService.updateTags(
       integration.organizationId,
       posts
     );
 
+    const postDetails = await Promise.all(
+      (newPosts || []).map(async (p) => ({
+        id: p.id,
+        message: stripHtmlValidation(
+          getIntegration.editor,
+          p.content,
+          true,
+          false,
+          !/<\/?[a-z][\s\S]*>/i.test(p.content),
+          getIntegration.mentionFormat
+        ),
+        settings: JSON.parse(p.settings || '{}'),
+        media: await this._postService.updateMedia(
+          p.id,
+          JSON.parse(p.image || '[]'),
+          getIntegration?.convertToJPEG || false
+        ),
+      }))
+    );
+
     let postNow;
     try {
-      postNow = await getIntegration.post(
-        integration.internalId,
-        integration.token,
-        await Promise.all(
-          (newPosts || []).map(async (p) => ({
-            id: p.id,
-            message: stripHtmlValidation(
-              getIntegration.editor,
-              p.content,
-              true,
-              false,
-              !/<\/?[a-z][\s\S]*>/i.test(p.content),
-              getIntegration.mentionFormat
-            ),
-            settings: JSON.parse(p.settings || '{}'),
-            media: await this._postService.updateMedia(
-              p.id,
-              JSON.parse(p.image || '[]'),
-              getIntegration?.convertToJPEG || false
-            ),
-          }))
-        ),
-        integration
+      postNow = await SocialPostingProxyContext.run(
+        {
+          proxyId: this.getPostingProxyId(integration),
+          providerIdentifier: integration.providerIdentifier,
+          proxyHttpService: this._proxyHttpService,
+        },
+        () =>
+          getIntegration.post(
+            integration.internalId,
+            integration.token,
+            postDetails,
+            integration
+          )
       );
     } catch (err) {
       if (err instanceof ApplicationFailure) {
@@ -379,10 +430,7 @@ export class PostActivity {
 
       return refresh;
     } catch (err) {
-      await this._refreshIntegrationService.setBetweenSteps(
-        integration,
-        cause
-      );
+      await this._refreshIntegrationService.setBetweenSteps(integration, cause);
       return false;
     }
   }

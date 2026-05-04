@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { ConnectIntegrationDto } from '@gitroom/nestjs-libraries/dtos/integrations/connect.integration.dto';
+import type { IntegrationProxyDto } from '@gitroom/nestjs-libraries/dtos/integrations/integration.proxy.dto';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { CheckPolicies } from '@gitroom/backend/services/auth/permissions/permissions.ability';
@@ -23,6 +24,15 @@ import {
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.service';
+import { ProxyService } from '@gitroom/nestjs-libraries/database/prisma/proxies/proxy.service';
+import { ProxyHttpService } from '@gitroom/nestjs-libraries/http/proxy.http.service';
+import { ProxyUnavailableError } from '@gitroom/nestjs-libraries/http/proxy.errors';
+import {
+  isAuthProxyProviderIdentifier,
+} from '@gitroom/nestjs-libraries/integrations/social.auth.proxy.providers';
+
+const AUTH_PROXY_UNAVAILABLE_MESSAGE =
+  'Authentication failed because the selected proxy is unavailable. Please choose another proxy or No Proxy and reconnect.';
 
 @ApiTags('Integrations')
 @Controller('/integrations')
@@ -31,12 +41,19 @@ export class NoAuthIntegrationsController {
     private _integrationManager: IntegrationManager,
     private _integrationService: IntegrationService,
     private _refreshIntegrationService: RefreshIntegrationService,
-    private _organizationService: OrganizationService
+    private _organizationService: OrganizationService,
+    private _proxyService: ProxyService,
+    private _proxyHttpService: ProxyHttpService
   ) {}
 
   @Get('/')
   getIntegrations() {
     return this._integrationManager.getAllIntegrations();
+  }
+
+  @Get('/proxies')
+  getIntegrationProxies(): Promise<IntegrationProxyDto[]> {
+    return this._proxyService.getIntegrationProxies();
   }
 
   @Post('/social-connect/:integration')
@@ -88,6 +105,8 @@ export class NoAuthIntegrationsController {
       await ioRedis.del(`refresh:${body.state}`);
     }
 
+    const selectedProxy = (await ioRedis.get(`proxy:${body.state}`)) ?? null;
+
     const onboarding = await ioRedis.get(`onboarding:${body.state}`);
     if (onboarding) {
       await ioRedis.del(`onboarding:${body.state}`);
@@ -112,7 +131,13 @@ export class NoAuthIntegrationsController {
             codeVerifier: getCodeVerifier,
             refresh: body.refresh,
           },
-          details ? JSON.parse(details) : undefined
+          details ? JSON.parse(details) : undefined,
+          isAuthProxyProviderIdentifier(integrationProvider.identifier)
+            ? {
+                proxyId: selectedProxy,
+                proxyHttpService: this._proxyHttpService,
+              }
+            : undefined
         );
 
         if (typeof auth === 'string') {
@@ -154,6 +179,18 @@ export class NoAuthIntegrationsController {
         if (err instanceof NotEnoughScopes) {
           return res({
             error: err.message,
+            accessToken: '',
+            id: '',
+            name: '',
+            picture: '',
+            username: '',
+            additionalSettings: [],
+          });
+        }
+
+        if (err instanceof ProxyUnavailableError) {
+          return res({
+            error: AUTH_PROXY_UNAVAILABLE_MESSAGE,
             accessToken: '',
             id: '',
             name: '',
@@ -236,8 +273,11 @@ export class NoAuthIntegrationsController {
           ? AuthService.signJWT(
               JSON.parse(Buffer.from(body.code, 'base64').toString())
             )
-          : undefined
+          : undefined,
+        selectedProxy
       );
+
+    await ioRedis.del(`proxy:${body.state}`);
 
     this._refreshIntegrationService
       .startRefreshWorkflow(org.id, createUpdate.id, integrationProvider)
