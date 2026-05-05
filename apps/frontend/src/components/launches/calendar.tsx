@@ -46,13 +46,10 @@ import SafeImage from '@gitroom/react/helpers/safe.image';
 import { extend } from 'dayjs';
 import { isUSCitizen } from './helpers/isuscitizen.utils';
 import { useInterval } from '@mantine/hooks';
-import { StatisticsModal } from '@gitroom/frontend/components/launches/statistics';
-import { MissingReleaseModal } from '@gitroom/frontend/components/launches/missing-release.modal';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import i18next from 'i18next';
 import { AddEditModal } from '@gitroom/frontend/components/new-launch/add.edit.modal';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
-import { useVariables } from '@gitroom/react/helpers/variable.context';
 import copy from 'copy-to-clipboard';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
@@ -92,7 +89,7 @@ export const hours = Array.from(
   (_, i) => i
 );
 
-// Shared hook for post actions (edit, delete, statistics)
+// Shared hook for post actions (edit, delete)
 const usePostActions = (onMutate?: () => void) => {
   const t = useT();
   const fetch = useFetch();
@@ -220,43 +217,7 @@ const usePostActions = (onMutate?: () => void) => {
     [toaster, t, fetch, mutate]
   );
 
-  const openStatistics = useCallback(
-    (id: string) => () => {
-      modal.openModal({
-        title: t('statistics', 'Statistics'),
-        closeOnClickOutside: true,
-        closeOnEscape: true,
-        withCloseButton: true,
-        classNames: {
-          modal: 'w-[100%] max-w-[1400px]',
-        },
-        children: <StatisticsModal postId={id} />,
-        size: '80%',
-      });
-    },
-    [modal, t]
-  );
-
-  const openMissingRelease = useCallback(
-    (id: string) => () => {
-      modal.openModal({
-        title: t('connect_post', 'Connect Post'),
-        closeOnClickOutside: true,
-        closeOnEscape: true,
-        withCloseButton: true,
-        classNames: {
-          modal: 'w-[100%] max-w-[800px]',
-        },
-        children: (
-          <MissingReleaseModal postId={id} onSuccess={mutate} />
-        ),
-        size: '60%',
-      });
-    },
-    [modal, t, mutate]
-  );
-
-  return { editPost, deletePost, copyDebugJson, openStatistics, openMissingRelease };
+  return { editPost, deletePost, copyDebugJson };
 };
 
 export const DayView = () => {
@@ -495,7 +456,7 @@ export const ListView = () => {
   const { integrations, loading, listPosts } = useCalendar();
 
   // Use shared post actions hook
-  const { editPost, deletePost, copyDebugJson, openStatistics, openMissingRelease } = usePostActions();
+  const { editPost, deletePost, copyDebugJson } = usePostActions();
 
   // Group posts by date
   const groupedPosts = useMemo(() => {
@@ -544,8 +505,6 @@ export const ListView = () => {
                   isBeforeNow={false}
                   date={newDayjs(post.publishDate)}
                   state={post.state}
-                  statistics={openStatistics(post.id)}
-                  missingRelease={openMissingRelease(post.id)}
                   editPost={editPost(post, false)}
                   duplicatePost={editPost(post, true)}
                   copyDebugJson={user?.isSuperAdmin ? copyDebugJson(post) : undefined}
@@ -602,7 +561,7 @@ export const CalendarColumn: FC<{
   const fetch = useFetch();
 
   // Use shared post actions hook
-  const { editPost, deletePost, copyDebugJson, openStatistics, openMissingRelease } = usePostActions();
+  const { editPost, deletePost, copyDebugJson } = usePostActions();
   const postList = useMemo(() => {
     return posts.filter((post) => {
       const pList = dayjs.utc(post.publishDate).local();
@@ -864,8 +823,6 @@ export const CalendarColumn: FC<{
                   isBeforeNow={isBeforeNow}
                   date={getDate}
                   state={post.state}
-                  statistics={openStatistics(post.id)}
-                  missingRelease={openMissingRelease(post.id)}
                   editPost={editPost(post, false)}
                   duplicatePost={editPost(post, true)}
                   copyDebugJson={user?.isSuperAdmin ? copyDebugJson(post) : undefined}
@@ -976,8 +933,6 @@ const CalendarItem: FC<{
   duplicatePost: () => void;
   copyDebugJson?: () => void;
   deletePost: () => void;
-  statistics: () => void;
-  missingRelease?: () => void;
   integrations: Integrations[];
   state: State;
   display: 'day' | 'week' | 'month';
@@ -992,7 +947,6 @@ const CalendarItem: FC<{
   const t = useT();
   const {
     editPost,
-    statistics,
     duplicatePost,
     copyDebugJson,
     post,
@@ -1002,9 +956,7 @@ const CalendarItem: FC<{
     display,
     deletePost,
     showTime,
-    missingRelease,
   } = props;
-  const { disableXAnalytics } = useVariables();
   const preview = useCallback(() => {
     window.open(`/p/` + post.id + '?share=true', '_blank');
   }, [post]);
@@ -1089,31 +1041,7 @@ const CalendarItem: FC<{
         >
           <Preview />
         </div>{' '}
-        {((post.integration.providerIdentifier === 'x' && disableXAnalytics) || !post.releaseId) ? (
-          <></>
-        ) : post.releaseId === 'missing' && missingRelease ? (
-          <div
-            className={clsx(
-              'hidden group-hover:block hover:underline cursor-pointer',
-              post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
-            )}
-            onClick={missingRelease}
-          >
-            <Statistics />
-          </div>
-        ) : post.releaseId !== 'missing' ? (
-          <div
-            className={clsx(
-              'hidden group-hover:block hover:underline cursor-pointer',
-              post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
-            )}
-            onClick={statistics}
-          >
-            <Statistics />
-          </div>
-        ) : (
-          <></>
-        )}{' '}
+        {/* HIDDEN: unused statistics feature, see hided/README.md */}
         <div
           className={clsx(
             'hidden group-hover:block hover:underline cursor-pointer',

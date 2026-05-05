@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import { redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 
 export const metadata: Metadata = {
   title: 'Postiz - Agent',
@@ -7,5 +7,6 @@ export const metadata: Metadata = {
 };
 
 export default async function Page() {
-  return redirect('/agents/new');
+  // HIDDEN: unused feature, see hided/README.md
+  return notFound();
 }

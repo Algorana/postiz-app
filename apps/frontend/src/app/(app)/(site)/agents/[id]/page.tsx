@@ -1,12 +1,10 @@
 import { Metadata } from 'next';
-import { Agent } from '@gitroom/frontend/components/agents/agent';
-import { AgentChat } from '@gitroom/frontend/components/agents/agent.chat';
+import { notFound } from 'next/navigation';
 export const metadata: Metadata = {
   title: 'Postiz - Agent',
   description: '',
 };
 export default async function Page() {
-  return (
-    <AgentChat />
-  );
+  // HIDDEN: unused feature, see hided/README.md
+  return notFound();
 }

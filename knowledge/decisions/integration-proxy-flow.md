@@ -74,10 +74,12 @@
 - Реальное сетевое применение proxy отложено на будущую итерацию и должно быть описано отдельно.
 - Последующая итерация описана в решении [Кастомный server-side HTTP-клиент с proxy для posting flow](add-custom-axios-proxy-client.md): proxy применяется только к внешним social/provider API-запросам во время posting; SDK/специализированные posting-клиенты без гарантированной proxy-поддержки должны fail closed при выбранном proxy; загрузки исходных медиа из Postiz storage/CDN/media-source URL не проксируются.
 - Для providers `tiktok` и `instagram-standalone` server-side OAuth/auth и refresh дополнительно описаны в решении [Proxy для server-side OAuth/auth и refresh TikTok/Instagram Standalone](proxy-oauth-refresh-for-tiktok-instagram.md): token exchange, profile/user info и refresh должны идти через `ProxyHttpService.fetch`, browser redirect не проксируется, direct fallback при выбранном proxy запрещён.
+- UI-уточнение для Add Provider описано в решении [Исправление Add Provider proxy modal flow](add-provider-proxy-modal-flow.md): provider popup должен закрываться до открытия proxy modal, proxy selector в Add Provider работает click-to-continue, а ошибка proxy-list допускает `Continue without proxy` как fail-open компромисс только для Add Provider.
 
 ## Связанные записи
 
 - [Архитектурные решения](index.md)
+- [Исправление Add Provider proxy modal flow](add-provider-proxy-modal-flow.md)
 - [Кастомный server-side HTTP-клиент с proxy для posting flow](add-custom-axios-proxy-client.md)
 - [Proxy для server-side OAuth/auth и refresh TikTok/Instagram Standalone](proxy-oauth-refresh-for-tiktok-instagram.md)
 - [Корень базы знаний](../root.md)
